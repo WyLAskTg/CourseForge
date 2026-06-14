@@ -1,35 +1,5 @@
-# CourseForge Web
+# CourseForge
 
-面向学生和教师的课程复习 Web 应用。当前版本聚焦核心流程：
+CourseForge is a web app for students and teachers to organize course materials and generate study outputs such as key points, common pitfalls, focused quizzes, and mock exams.
 
-- 创建课程分类，并按课程存储上传资料与生成历史
-- 上传 PDF、DOCX、TXT 资料并在浏览器端解析文本
-- 根据 course notes、slides、past exam 或课程大纲生成知识点、易错考点、重点小测、模拟考试
-- 对偏文史政内容启用中立审查，发现明显政治劝服、歧视或煽动性表达时拒绝生成
-- 出题时展示题目原创性、逻辑完整性、答案可解答性检查状态
-- 支持复制和导出生成结果
-- 中英双语界面与双语生成结果
-
-## 本地运行
-
-```bash
-node server.js
-```
-
-默认地址是 `http://127.0.0.1:5173`。当前原型不需要安装 npm 依赖；PDF/DOCX 解析库会在浏览器端按需从 CDN 加载。
-
-## 发布成公网网站
-
-这是一个静态网站，可以部署到 Vercel、Netlify、Cloudflare Pages 或 GitHub Pages。部署说明见 `DEPLOYMENT.md`。
-
-## 后续接入真实 AI 后端
-
-前端现在使用 `src/lib/generationEngine.js` 中的本地原型生成逻辑。生产版建议替换为后端生成流水线：
-
-1. 文档解析与 OCR
-2. 课程知识点抽取
-3. 文科客观性与安全审查
-4. 题目生成
-5. 与原资料做语义相似度查重
-6. 可解答性与答案一致性验证
-7. 保存到课程记忆库
+It supports course-based libraries, document upload, generation history, and exportable review materials.
