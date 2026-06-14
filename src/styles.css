@@ -303,6 +303,23 @@ textarea:focus {
   gap: 10px;
 }
 
+.language-control {
+  display: grid;
+  gap: 4px;
+  min-width: 132px;
+}
+
+.language-control span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.language-control select {
+  height: 42px;
+  min-width: 132px;
+}
+
 .eyebrow {
   font-weight: 900;
   margin: 0 0 6px;
@@ -627,10 +644,43 @@ h2 {
   gap: 10px;
 }
 
-.result-item p {
-  margin: 10px 0 0;
+.rich-text {
   color: #344054;
-  line-height: 1.62;
+  font-size: 15px;
+  line-height: 1.68;
+  overflow-wrap: anywhere;
+}
+
+.rich-text p {
+  margin: 10px 0 0;
+}
+
+.rich-text ul {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding-left: 20px;
+}
+
+.rich-text li {
+  padding-left: 2px;
+}
+
+.rich-text code {
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: #eef2f7;
+  font-size: 0.94em;
+}
+
+.rich-text mjx-container {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.result-body {
+  margin-top: 10px;
 }
 
 .meta-list,
@@ -653,7 +703,10 @@ h2 {
   color: #1f3b2c;
   background: #edf8ef;
   border-radius: 8px;
-  line-height: 1.58;
+}
+
+.answer-box.rich-text {
+  color: #1f3b2c;
 }
 
 .mini-checks {

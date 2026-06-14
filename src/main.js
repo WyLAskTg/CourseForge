@@ -1,5 +1,6 @@
 const STORAGE_KEY = "courseforge-state-v3";
 const LEGACY_STORAGE_KEY = "courseforge-state-v1";
+const UI_LANGUAGE_KEY = "courseforge-ui-language";
 const TEXT_LIMIT = 120000;
 
 const defaultState = {
@@ -49,10 +50,14 @@ let isParsing = false;
 let isGenerating = false;
 let parseMessage = "";
 let parserCache = {};
+let uiLanguage = loadUiLanguage();
 
 render();
 
 function render() {
+  document.documentElement.lang = uiLanguage === "zh" ? "zh-CN" : "en";
+  document.title = t("CourseForge | AI 课程复习助手", "CourseForge | AI Course Review Assistant");
+
   const activeCourse = getActiveCourse();
   const courseDocuments = getCourseDocuments();
   const courseGenerations = getCourseGenerations();
@@ -60,8 +65,10 @@ function render() {
   const safety = analyzeSafety(corpus);
   const activeGeneration = state.generations.find((generation) => generation.id === activeGenerationId) || courseGenerations[0];
   const selectedTaskOption = taskOptions.find((option) => option.id === selectedTask) || taskOptions[0];
+  const rootElement = document.getElementById("root");
 
-  document.getElementById("root").innerHTML = `
+  window.MathJax?.typesetClear?.([rootElement]);
+  rootElement.innerHTML = `
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
@@ -76,51 +83,58 @@ function render() {
           <div class="form-title">
             <label for="courseName">${bi("课程分类", "Course category")}</label>
             <select id="courseAudience" aria-label="课程身份">
-              ${option("学生", audience, "学生 / Student")}
-              ${option("教师", audience, "教师 / Teacher")}
+              ${option("学生", audience, t("学生", "Student"))}
+              ${option("教师", audience, t("教师", "Teacher"))}
             </select>
           </div>
           <div class="input-row">
-            <input id="courseName" placeholder="新增课程或班级 / New course or class" />
-            <button class="icon-button" type="submit" aria-label="新增课程">${icon("folder-plus")}</button>
+            <input id="courseName" placeholder="${t("新增课程或班级", "New course or class")}" />
+            <button class="icon-button" type="submit" aria-label="${t("新增课程", "Add course")}">${icon("folder-plus")}</button>
           </div>
         </form>
 
-        <div class="course-list" aria-label="课程列表">
+        <div class="course-list" aria-label="${t("课程列表", "Course list")}">
           ${state.courses.map((course) => courseButton(course, activeCourse?.id)).join("")}
         </div>
 
         <div class="sidebar-note">
-          <strong>资料边界 / Source boundary</strong>
-          <span>生成内容仅使用当前课程资料与本次要求。Generated content uses only this course library and the current request.</span>
+          <strong>${t("资料边界", "Source boundary")}</strong>
+          <span>${t("生成内容仅使用当前课程资料与本次要求。", "Generated content uses only this course library and the current request.")}</span>
         </div>
       </aside>
 
       <main class="workspace">
         <header class="topbar">
           <div>
-            <p class="eyebrow">课程工作台 / Course Workspace</p>
+            <p class="eyebrow">${t("课程工作台", "Course Workspace")}</p>
             <h1>${escapeHtml(activeCourse?.name || "新课程")}</h1>
           </div>
           <div class="header-actions">
+            <label class="language-control">
+              <span>${t("语言", "Language")}</span>
+              <select id="languageSelect" aria-label="${t("界面语言", "Interface language")}">
+                ${option("zh", uiLanguage, "中文")}
+                ${option("en", uiLanguage, "English")}
+              </select>
+            </label>
             <button class="secondary-action" id="copyResultBtn" type="button" ${activeGeneration ? "" : "disabled"}>
-              ${icon("copy")}<span>复制结果 / Copy</span>
+              ${icon("copy")}<span>${t("复制结果", "Copy")}</span>
             </button>
             <button class="secondary-action" id="downloadResultBtn" type="button" ${activeGeneration ? "" : "disabled"}>
-              ${icon("download")}<span>导出 / Export</span>
+              ${icon("download")}<span>${t("导出", "Export")}</span>
             </button>
             <div class="safety-pill ${safety.level}">
               ${icon(safety.level === "blocked" ? "triangle-alert" : "shield-check")}
-              <span>${escapeHtml(safety.label)}</span>
+              <span>${escapeHtml(displayBilingual(safety.label))}</span>
             </div>
           </div>
         </header>
 
         <section class="summary-strip" aria-label="课程状态">
-          ${summaryCard("file-text", "资料 / Materials", courseDocuments.length, "当前课程 / Current course")}
-          ${summaryCard("sparkles", "生成 / Outputs", courseGenerations.length, "历史记录 / History")}
-          ${summaryCard("shield-check", "审核 / Review", safety.label, safety.reason)}
-          ${summaryCard("upload", "格式 / Formats", "PDF / DOCX / TXT", "DOC 需后端转换 / DOC needs backend conversion")}
+          ${summaryCard("file-text", t("资料", "Materials"), courseDocuments.length, t("当前课程", "Current course"))}
+          ${summaryCard("sparkles", t("生成", "Outputs"), courseGenerations.length, t("历史记录", "History"))}
+          ${summaryCard("shield-check", t("审核", "Review"), displayBilingual(safety.label), displayBilingual(safety.reason))}
+          ${summaryCard("upload", t("格式", "Formats"), "PDF / DOCX / TXT", t("DOC 需后端转换", "DOC needs backend conversion"))}
         </section>
 
         <section class="main-grid">
@@ -128,29 +142,29 @@ function render() {
             <section class="panel upload-panel">
               <div class="panel-heading">
                 <div>
-                  <p class="eyebrow">资料库 / Library</p>
-                  <h2>课程资料 / Course Materials</h2>
+                  <p class="eyebrow">${t("资料库", "Library")}</p>
+                  <h2>${t("课程资料", "Course Materials")}</h2>
                 </div>
                 <label class="upload-button">
                   ${icon(isParsing ? "loader-2" : "upload", isParsing ? "spin" : "")}
-                  <span>${isParsing ? "解析中 / Parsing" : "上传 / Upload"}</span>
+                  <span>${isParsing ? t("解析中", "Parsing") : t("上传", "Upload")}</span>
                   <input id="fileInput" type="file" accept=".pdf,.doc,.docx,.txt" multiple />
                 </label>
               </div>
-              ${parseMessage ? `<p class="parse-message">${escapeHtml(parseMessage)}</p>` : ""}
+              ${parseMessage ? `<p class="parse-message">${escapeHtml(displayBilingual(parseMessage))}</p>` : ""}
               <div class="document-list">
-                ${courseDocuments.length ? courseDocuments.map(documentRow).join("") : emptyState("library-big", "暂无资料 / No materials yet", "PDF、DOCX、TXT", false)}
+                ${courseDocuments.length ? courseDocuments.map(documentRow).join("") : emptyState("library-big", t("暂无资料", "No materials yet"), "PDF / DOCX / TXT", false)}
               </div>
             </section>
 
             <section class="panel generator-panel">
               <div class="panel-heading">
                 <div>
-                  <p class="eyebrow">生成配置 / Generation Setup</p>
+                  <p class="eyebrow">${t("生成配置", "Generation Setup")}</p>
                   <h2>${bi(selectedTaskOption.label, selectedTaskOption.enLabel)}</h2>
                 </div>
                 <button class="primary-action" id="generateBtn" type="button" ${isGenerating ? "disabled" : ""}>
-                  ${icon(isGenerating ? "loader-2" : "sparkles", isGenerating ? "spin" : "")}<span>${isGenerating ? "生成中 / Generating" : "生成 / Generate"}</span>
+                  ${icon(isGenerating ? "loader-2" : "sparkles", isGenerating ? "spin" : "")}<span>${isGenerating ? t("生成中", "Generating") : t("生成", "Generate")}</span>
                 </button>
               </div>
 
@@ -160,33 +174,33 @@ function render() {
 
               <div class="settings-grid">
                 <label>
-                  <span>身份 / Role</span>
+                  <span>${t("身份", "Role")}</span>
                   <select id="audienceSelect">
-                    ${option("学生", audience, "学生 / Student")}
-                    ${option("教师", audience, "教师 / Teacher")}
+                    ${option("学生", audience, t("学生", "Student"))}
+                    ${option("教师", audience, t("教师", "Teacher"))}
                   </select>
                 </label>
                 <label>
-                  <span>难度 / Difficulty</span>
+                  <span>${t("难度", "Difficulty")}</span>
                   <select id="difficultySelect">
-                    ${option("基础", difficulty, "基础 / Foundation")}
-                    ${option("标准", difficulty, "标准 / Standard")}
-                    ${option("挑战", difficulty, "挑战 / Challenge")}
+                    ${option("基础", difficulty, t("基础", "Foundation"))}
+                    ${option("标准", difficulty, t("标准", "Standard"))}
+                    ${option("挑战", difficulty, t("挑战", "Challenge"))}
                   </select>
                 </label>
                 <label>
-                  <span>题量 / Count</span>
+                  <span>${t("题量", "Count")}</span>
                   <input id="questionCount" type="number" min="3" max="12" value="${questionCount}" />
                 </label>
                 <label class="toggle-row">
                   <input id="includeAnswers" type="checkbox" ${includeAnswers ? "checked" : ""} />
-                  <span>包含答案 / Include answers</span>
+                  <span>${t("包含答案", "Include answers")}</span>
                 </label>
               </div>
 
               <label class="requirement-box">
-                <span>本次要求 / Current request</span>
-                <textarea id="extraRequirement" placeholder="例 / Example: 重点关注 Week 4; focus on Week 4; do not reuse past exam data">${escapeHtml(extraRequirement)}</textarea>
+                <span>${t("本次要求", "Current request")}</span>
+                <textarea id="extraRequirement" placeholder="${t("例：重点关注 Week 4；不要复用真题数据", "Example: focus on Week 4; do not reuse past exam data")}">${escapeHtml(extraRequirement)}</textarea>
               </label>
             </section>
           </div>
@@ -194,34 +208,34 @@ function render() {
           <section class="panel output-panel">
             <div class="panel-heading output-heading">
               <div>
-                <p class="eyebrow">生成结果 / Output</p>
-                <h2>${escapeHtml(activeGeneration?.title || "等待生成 / Waiting")}</h2>
+                <p class="eyebrow">${t("生成结果", "Output")}</p>
+                <h2>${escapeHtml(displayBilingual(activeGeneration?.title || t("等待生成", "Waiting")))}</h2>
               </div>
               ${statusBadge(activeGeneration?.output?.safety?.level || safety.level, activeGeneration?.output?.safety?.label || safety.label)}
             </div>
-            ${activeGeneration ? generatedOutput(activeGeneration) : emptyState("sparkles", "暂无结果 / No output yet", "Key points / Pitfalls / Quiz / Mock exam", false)}
+            ${activeGeneration ? generatedOutput(activeGeneration) : emptyState("sparkles", t("暂无结果", "No output yet"), "Key points / Pitfalls / Quiz / Mock exam", false)}
           </section>
         </section>
       </main>
 
       <aside class="memory-panel">
         <div class="memory-heading">
-          ${icon("history")}<h2>课程记忆 / Course Memory</h2>
+          ${icon("history")}<h2>${t("课程记忆", "Course Memory")}</h2>
         </div>
         <div class="metric-strip">
-          ${metric("资料 / Materials", courseDocuments.length)}
-          ${metric("生成 / Outputs", courseGenerations.length)}
-          ${metric("分类 / Categories", state.courses.length)}
+          ${metric(t("资料", "Materials"), courseDocuments.length)}
+          ${metric(t("生成", "Outputs"), courseGenerations.length)}
+          ${metric(t("分类", "Categories"), state.courses.length)}
         </div>
         <div class="history-list">
-          ${courseGenerations.length ? courseGenerations.map((generation) => historyItem(generation, activeGeneration?.id)).join("") : emptyState("history", "没有历史记录 / No history", "自动保存在当前课程 / Saved to this course", true)}
+          ${courseGenerations.length ? courseGenerations.map((generation) => historyItem(generation, activeGeneration?.id)).join("") : emptyState("history", t("没有历史记录", "No history"), t("自动保存在当前课程", "Saved to this course"), true)}
         </div>
         <div class="policy-box">
-          <div>${icon("shield-check")}<strong>生成门槛 / Generation Rules</strong></div>
+          <div>${icon("shield-check")}<strong>${t("生成门槛", "Generation Rules")}</strong></div>
           <ul>
-            <li>题干语境、数据、案例不复用原资料 / Context, data, and cases are not reused</li>
-            <li>题目条件完整，答案可由题干推出 / Questions must be logically answerable</li>
-            <li>文史政内容保持事实、观点、来源分离 / Humanities topics separate facts, views, and sources</li>
+            <li>${t("题干语境、数据、案例不复用原资料", "Context, data, and cases are not reused")}</li>
+            <li>${t("题目条件完整，答案可由题干推出", "Questions must be logically answerable")}</li>
+            <li>${t("文史政内容保持事实、观点、来源分离", "Humanities topics separate facts, views, and sources")}</li>
           </ul>
         </div>
       </aside>
@@ -230,10 +244,16 @@ function render() {
 
   attachEvents(activeGeneration);
   window.lucide?.createIcons({ strokeWidth: 2 });
+  queueMathTypeset();
 }
 
 function attachEvents(activeGeneration) {
   document.getElementById("courseForm")?.addEventListener("submit", handleCreateCourse);
+  document.getElementById("languageSelect")?.addEventListener("change", (event) => {
+    uiLanguage = event.target.value === "en" ? "en" : "zh";
+    localStorage.setItem(UI_LANGUAGE_KEY, uiLanguage);
+    render();
+  });
   document.getElementById("courseAudience")?.addEventListener("change", (event) => {
     audience = event.target.value;
   });
@@ -315,7 +335,7 @@ async function handleFilesSelected(event) {
   if (!files.length || !activeCourse) return;
 
   isParsing = true;
-  parseMessage = "正在解析文件 / Parsing files";
+  parseMessage = t("正在解析文件", "Parsing files");
   render();
 
   const uploaded = [];
@@ -347,7 +367,7 @@ async function handleFilesSelected(event) {
   }
 
   persist({ ...state, documents: [...uploaded, ...state.documents] });
-  parseMessage = `${uploaded.length} 个文件已加入课程资料库 / ${uploaded.length} file(s) added to this course`;
+  parseMessage = t(`${uploaded.length} 个文件已加入课程资料库`, `${uploaded.length} file(s) added to this course`);
   isParsing = false;
   event.target.value = "";
   render();
@@ -412,7 +432,8 @@ function buildGenerationRequest({ task, course, documents, corpus, safety, setti
       difficulty: settings.difficulty,
       questionCount: settings.questionCount,
       includeAnswers: settings.includeAnswers,
-      extraRequirement: settings.extraRequirement
+      extraRequirement: settings.extraRequirement,
+      language: uiLanguage
     },
     safety,
     materials: documents.map((document) => ({
@@ -432,7 +453,9 @@ function buildGenerationRequest({ task, course, documents, corpus, safety, setti
       "Use the uploaded course materials as source context.",
       "Generate final student-facing content only. Do not return prompts, instructions, or hidden reasoning.",
       "For quizzes and mock exams, every question must be answerable from the question conditions and course context.",
-      "Do not reuse decisive data, cases, wording, or contexts from uploaded exams."
+      "Do not reuse decisive data, cases, wording, or contexts from uploaded exams.",
+      "Use clear line breaks for multi-part questions, solutions, and marking guides.",
+      "Use standard LaTeX delimiters for math: inline \\(...\\), display \\[...\\]."
     ]
   };
 }
@@ -503,22 +526,42 @@ function buildBlockedOutput(safety) {
 }
 
 function buildBackendNotConnectedOutput(error, safety) {
+  const message = error.message || "";
+  const isQuotaIssue = /quota|billing|credit|plan/i.test(message);
+  const isModelIssue = /model|does not exist|not found|unsupported/i.test(message);
+  const title = isQuotaIssue
+    ? t("OpenAI 额度或账单问题", "OpenAI Quota or Billing Issue")
+    : isModelIssue
+      ? t("OpenAI 模型配置问题", "OpenAI Model Configuration Issue")
+      : t("AI 接口未连接", "AI Backend Not Connected");
+  const statusDetail = isQuotaIssue
+    ? t("OpenAI 已响应，但账号额度或账单不可用", "OpenAI responded, but quota or billing is unavailable")
+    : isModelIssue
+      ? t("OpenAI 已响应，但模型名称或权限不可用", "OpenAI responded, but the model name or access is unavailable")
+      : t("未收到真实 AI 生成结果", "No real AI output was returned");
+
   return {
-    title: "AI 接口未连接 / AI Backend Not Connected",
+    title,
     type: "system",
     safety,
     checks: [
-      { label: "接口状态 / API Status", status: "review", detail: "未收到真实 AI 生成结果 / No real AI output was returned" },
-      { label: "本地模板 / Local Templates", status: "blocked", detail: "已禁用假生成 / Mock generation is disabled" }
+      { label: t("接口状态", "API Status"), status: "review", detail: statusDetail },
+      { label: t("本地模板", "Local Templates"), status: "blocked", detail: t("已禁用假生成", "Mock generation is disabled") }
     ],
     items: [
       {
-        title: "需要接入生成接口 / Connect a Generation API",
-        body: `当前前端已经把课程资料、用户设置和生成规则发送到 /api/generate，但后端还没有连接真实 AI 服务。错误：${error.message} / The frontend sent the course materials, settings, and rules to /api/generate, but no real AI service is connected yet. Error: ${error.message}`
+        title: isQuotaIssue ? t("需要处理 OpenAI 账单", "OpenAI Billing Required") : t("需要检查生成接口", "Check the Generation API"),
+        body: t(
+          `前端已经把课程资料、用户设置和生成规则发送到 /api/generate。OpenAI 返回错误：${message}`,
+          `The frontend sent the course materials, settings, and rules to /api/generate. OpenAI returned this error: ${message}`
+        )
       },
       {
-        title: "接口返回格式 / Expected API Response",
-        body: `后端应返回 JSON：{ "output": { "title": "...", "type": "quiz", "checks": [...], "items": [{ "title": "...", "body": "final student-facing content", "answer": "final answer" }] } }。注意：body 和 answer 必须是最终给学生/教师看的内容，不要返回 prompt。 / Return final user-facing JSON only; do not return prompts.`
+        title: t("接口返回格式", "Expected API Response"),
+        body: t(
+          `后端应返回 JSON：{ "output": { "title": "...", "type": "quiz", "checks": [...], "items": [{ "title": "...", "body": "final student-facing content", "answer": "final answer" }] } }。注意：body 和 answer 必须是最终给学生/教师看的内容，不要返回 prompt。`,
+          `Return JSON like { "output": { "title": "...", "type": "quiz", "checks": [...], "items": [{ "title": "...", "body": "final student-facing content", "answer": "final answer" }] } }. Return final user-facing content only; do not return prompts.`
+        )
       }
     ]
   };
@@ -816,9 +859,9 @@ function downloadGeneration(generation) {
 
 function formatGenerationText(generation) {
   const output = generation.output;
-  const checks = output.checks.map((check) => `- ${check.label}: ${check.detail}`).join("\n");
-  const items = output.items.map((item) => `${item.title}\n${item.body}${item.answer ? `\n答案 / Answer：${item.answer}` : ""}`).join("\n\n");
-  return `${generation.title}\n${formatDate(generation.createdAt)}\n\n审核 / Review\n${checks}\n\n内容 / Content\n${items}\n`;
+  const checks = output.checks.map((check) => `- ${displayBilingual(check.label)}: ${displayBilingual(check.detail)}`).join("\n");
+  const items = output.items.map((item) => `${displayBilingual(item.title)}\n${item.body}${item.answer ? `\n${t("答案", "Answer")}：${item.answer}` : ""}`).join("\n\n");
+  return `${displayBilingual(generation.title)}\n${formatDate(generation.createdAt)}\n\n${t("审核", "Review")}\n${checks}\n\n${t("内容", "Content")}\n${items}\n`;
 }
 
 function persist(nextState) {
@@ -860,7 +903,7 @@ function courseButton(course, activeId) {
       <span class="course-color" style="background-color: ${escapeAttr(course.color)}"></span>
       <span>
         <strong>${escapeHtml(course.name)}</strong>
-        <small>${escapeHtml(roleLabel(course.audience))} · ${docCount} 份资料 / material(s)</small>
+        <small>${escapeHtml(roleLabel(course.audience))} · ${t(`${docCount} 份资料`, `${docCount} material(s)`)}</small>
       </span>
       ${icon("chevron-right")}
     </button>
@@ -873,10 +916,10 @@ function documentRow(document) {
       <div class="file-icon">${icon("file-text")}</div>
       <div>
         <strong>${escapeHtml(document.name)}</strong>
-        <span>${escapeHtml(document.type)} · ${formatBytes(document.size)}</span>
+        <span>${escapeHtml(displayBilingual(document.type))} · ${formatBytes(document.size)}</span>
       </div>
-      ${statusBadge(document.safety?.level || "clear", document.safety?.label || "通过")}
-      <button class="icon-button quiet" type="button" data-delete-doc="${escapeAttr(document.id)}" aria-label="删除资料">
+      ${statusBadge(document.safety?.level || "clear", document.safety?.label || t("通过", "Clear"))}
+      <button class="icon-button quiet" type="button" data-delete-doc="${escapeAttr(document.id)}" aria-label="${t("删除资料", "Delete material")}">
         ${icon("trash-2")}
       </button>
     </article>
@@ -887,7 +930,7 @@ function taskButton(option) {
   return `
     <button type="button" class="task-button ${selectedTask === option.id ? "selected" : ""}" data-task-id="${escapeAttr(option.id)}">
       ${icon(option.icon)}
-      <span><strong>${escapeHtml(option.label)} / ${escapeHtml(option.enLabel)}</strong><small>${escapeHtml(option.tone)} / ${escapeHtml(option.enTone)}</small></span>
+      <span><strong>${escapeHtml(biText(option.label, option.enLabel))}</strong><small>${escapeHtml(biText(option.tone, option.enTone))}</small></span>
     </button>
   `;
 }
@@ -901,12 +944,12 @@ function generatedOutput(generation) {
         ${output.items.map((item) => `
           <article class="result-item ${output.type === "refusal" ? "blocked" : ""}">
             <div class="result-title">
-              <strong>${escapeHtml(item.title)}</strong>
-              ${item.meta ? `<div class="meta-list">${item.meta.map((meta) => `<span>${escapeHtml(meta)}</span>`).join("")}</div>` : ""}
+              <strong>${escapeHtml(displayBilingual(item.title))}</strong>
+              ${item.meta ? `<div class="meta-list">${item.meta.map((meta) => `<span>${escapeHtml(displayBilingual(meta))}</span>`).join("")}</div>` : ""}
             </div>
-            <p>${escapeHtml(item.body)}</p>
-            ${item.answer ? `<div class="answer-box">${escapeHtml(item.answer)}</div>` : ""}
-            ${item.checks ? `<div class="mini-checks">${item.checks.map((check) => `<span class="${escapeAttr(check.status)}">${escapeHtml(check.label)}: ${escapeHtml(check.detail)}</span>`).join("")}</div>` : ""}
+            <div class="rich-text result-body">${renderRichText(item.body)}</div>
+            ${item.answer ? `<div class="answer-box rich-text">${renderRichText(item.answer)}</div>` : ""}
+            ${item.checks ? `<div class="mini-checks">${item.checks.map((check) => `<span class="${escapeAttr(check.status)}">${escapeHtml(displayBilingual(check.label))}: ${escapeHtml(displayBilingual(check.detail))}</span>`).join("")}</div>` : ""}
           </article>
         `).join("")}
       </div>
@@ -918,8 +961,8 @@ function checkChip(check) {
   return `
     <div class="check-chip ${escapeAttr(check.status)}">
       ${icon(check.status === "pass" ? "circle-check" : "triangle-alert")}
-      <span>${escapeHtml(check.label)}</span>
-      <small>${escapeHtml(check.detail)}</small>
+      <span>${escapeHtml(displayBilingual(check.label))}</span>
+      <small>${escapeHtml(displayBilingual(check.detail))}</small>
     </div>
   `;
 }
@@ -927,7 +970,7 @@ function checkChip(check) {
 function historyItem(generation, activeId) {
   return `
     <button class="history-item ${generation.id === activeId ? "active" : ""}" type="button" data-generation-id="${escapeAttr(generation.id)}">
-      <span>${escapeHtml(generation.title)}</span>
+      <span>${escapeHtml(displayBilingual(generation.title))}</span>
       <small>${formatDate(generation.createdAt)}</small>
     </button>
   `;
@@ -937,7 +980,7 @@ function statusBadge(status, label) {
   return `
     <span class="status-badge ${escapeAttr(status)}">
       ${icon(status === "blocked" ? "triangle-alert" : "shield-check")}
-      ${escapeHtml(label)}
+      ${escapeHtml(displayBilingual(label))}
     </span>
   `;
 }
@@ -976,7 +1019,93 @@ function icon(name, className = "") {
 }
 
 function bi(zh, en) {
-  return `<span class="bi"><span>${escapeHtml(zh)}</span><small>${escapeHtml(en)}</small></span>`;
+  return `<span class="bi"><span>${escapeHtml(biText(zh, en))}</span></span>`;
+}
+
+function biText(zh, en) {
+  return uiLanguage === "zh" ? zh : en;
+}
+
+function t(zh, en) {
+  return biText(zh, en);
+}
+
+function displayBilingual(value = "") {
+  const text = String(value);
+  const parts = text.split(/\s+\/\s+/);
+  if (parts.length < 2) return text;
+  return uiLanguage === "zh" ? parts[0] : parts.slice(1).join(" / ");
+}
+
+function renderRichText(value = "") {
+  const text = prettifyGeneratedText(value);
+  if (!text.trim()) return "";
+
+  return text
+    .split(/\n{2,}/)
+    .map((block) => renderRichBlock(block))
+    .join("");
+}
+
+function renderRichBlock(block) {
+  const lines = block.split("\n").map((line) => line.trim()).filter(Boolean);
+  if (!lines.length) return "";
+
+  if (lines.length > 1 && lines.every((line) => isListLine(line))) {
+    return `<ul>${lines.map((line) => `<li>${renderInlineText(listItemText(line))}</li>`).join("")}</ul>`;
+  }
+
+  return `<p>${lines.map(renderInlineText).join("<br>")}</p>`;
+}
+
+function renderInlineText(value) {
+  return escapeHtml(normalizeBareLatex(value))
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
+}
+
+function prettifyGeneratedText(value) {
+  return String(value || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\\n(?![A-Za-z])/g, "\n")
+    .replace(/[ \t]+(\([a-z]\))/gi, "\n$1")
+    .replace(/[ \t]+([A-D]\.)[ \t]+/g, "\n$1 ")
+    .replace(/[ \t]+(Answer|Solution|Proof|Rubric|Reason|Therefore|Hence):/gi, "\n\n$1:")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function normalizeBareLatex(value) {
+  return String(value)
+    .split(/(\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]|\$\$[\s\S]*?\$\$|\$[^$\n]+\$)/g)
+    .map((part) => {
+      if (/^(\\\(|\\\[|\$\$|\$)/.test(part)) return part;
+      return part
+        .replace(/\b([A-Za-z][A-Za-z0-9]*_\{[^}]+\})\b/g, "\\($1\\)")
+        .replace(/((?:\\(?:frac|sqrt|sum|prod|int|lim|cup|cap|setminus|mathbb|in|notin|subseteq|subset|leq|geq|neq|equiv|pmod|mid|nmid|rightarrow|Rightarrow|leftarrow|leftrightarrow|land|lor|neg|forall|exists)\b(?:\{[^}]*\}){0,3}|\b[A-Za-z0-9_{}^]+\s*\\(?:cup|cap|setminus|mid|nmid|land|lor)\s*[A-Za-z0-9_{}^]+))/g, "\\($1\\)");
+    })
+    .join("");
+}
+
+function isListLine(value) {
+  return /^([-*•]|\d+[.)]|\([a-z]\)|[A-Z][.)])\s+/i.test(value);
+}
+
+function listItemText(value) {
+  if (/^[-*•]\s+/.test(value)) return value.replace(/^[-*•]\s+/, "");
+  return value;
+}
+
+function queueMathTypeset() {
+  window.MathJax?.typesetPromise?.([document.getElementById("root")]).catch(() => {});
+}
+
+function loadUiLanguage() {
+  try {
+    return localStorage.getItem(UI_LANGUAGE_KEY) === "en" ? "en" : "zh";
+  } catch {
+    return "zh";
+  }
 }
 
 function pickCourseColor(index) {
@@ -990,13 +1119,13 @@ function normalizeAudience(value) {
 }
 
 function roleLabel(value) {
-  return value === "教师" ? "教师 / Teacher" : "学生 / Student";
+  return value === "教师" ? t("教师", "Teacher") : t("学生", "Student");
 }
 
 function difficultyLabel(value) {
-  if (value === "基础") return "基础 / Foundation";
-  if (value === "挑战") return "挑战 / Challenge";
-  return "标准 / Standard";
+  if (value === "基础") return t("基础", "Foundation");
+  if (value === "挑战") return t("挑战", "Challenge");
+  return t("标准", "Standard");
 }
 
 function formatBytes(size) {

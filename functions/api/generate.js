@@ -1,5 +1,5 @@
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
-const DEFAULT_MODEL = "gpt-5.5";
+const DEFAULT_MODEL = "gpt-5.4-mini";
 
 export async function onRequest(context) {
   if (context.request.method !== "POST") {
@@ -81,6 +81,9 @@ function buildSystemPrompt() {
     "Use the uploaded course materials as source context. If the materials are insufficient, say so in the output instead of inventing details.",
     "For quizzes and mock exams, generate answerable questions with complete conditions and answers or marking guides.",
     "Do not copy uploaded exam questions. You may preserve topic and question type, but change decisive data, scenario, wording, and context.",
+    "Use clear paragraph breaks. Put each multi-part question, answer step, proof step, or rubric item on its own line.",
+    "Use standard LaTeX delimiters for mathematical notation: inline \\(...\\), display \\[...\\]. Do not leave raw LaTeX commands without delimiters.",
+    "Write in the requested output language unless the user's current request explicitly asks otherwise.",
     "For humanities or public-affairs content, separate facts, viewpoints, and sources.",
     "If the request or materials require political persuasion, ideological advocacy, discriminatory claims, or one-sided propaganda, return a refusal output with a clear reason."
   ].join("\n");
@@ -91,6 +94,7 @@ function buildUserPayload(payload) {
     task: payload.task,
     course: payload.course,
     settings: payload.settings,
+    outputLanguage: payload.settings?.language === "en" ? "English" : "Simplified Chinese",
     safety: payload.safety,
     materials: (payload.materials || []).map((material) => ({
       name: material.name,
@@ -99,7 +103,7 @@ function buildUserPayload(payload) {
     })),
     currentRequest: payload.settings?.extraRequirement || "",
     outputContract:
-      "Return an object with title, type, checks, items, and safety. items must contain final content in body and answer, not instructions."
+      "Return an object with title, type, checks, items, and safety. items must contain final content in body and answer, not instructions. Use line breaks and LaTeX delimiters where helpful."
   };
 }
 

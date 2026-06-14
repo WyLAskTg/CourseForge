@@ -10,6 +10,17 @@
   <body>
     <div id="root"></div>
     <script src="https://unpkg.com/lucide@0.475.0/dist/umd/lucide.min.js"></script>
+    <script>
+      window.MathJax = {
+        tex: {
+          inlineMath: [["\\(", "\\)"], ["$", "$"]],
+          displayMath: [["\\[", "\\]"], ["$$", "$$"]]
+        },
+        svg: { fontCache: "global" },
+        options: { skipHtmlTags: ["script", "noscript", "style", "textarea", "pre", "code"] }
+      };
+    </script>
+    <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
