@@ -2,6 +2,7 @@ import http from "node:http";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { generateCourseOutput } from "./functions/api/generate.js";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 5173);
@@ -20,25 +21,31 @@ const server = http.createServer(async (request, response) => {
 
     if (url.pathname === "/api/generate") {
       if (request.method !== "POST") {
-        response.writeHead(405, { "Content-Type": "application/json; charset=utf-8" });
-        response.end(JSON.stringify({ error: "Method not allowed" }));
+        sendJson(response, 405, { error: "Method not allowed" });
         return;
       }
 
-      let body = "";
-      request.on("data", (chunk) => {
-        body += chunk;
-      });
-      request.on("end", () => {
-        response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        response.end(
-          JSON.stringify({
-            configured: false,
-            error: "AI backend is not connected. Implement this endpoint to call a real model and return final user-facing JSON.",
-            received: body ? "request body received" : "empty body"
-          })
-        );
-      });
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) {
+        sendJson(response, 200, {
+          configured: false,
+          error: "OPENAI_API_KEY is not configured. Set it before starting the local server."
+        });
+        return;
+      }
+
+      try {
+        const payload = await readJsonRequest(request);
+        const output = await generateCourseOutput(payload, {
+          apiKey,
+          model: process.env.OPENAI_MODEL
+        });
+        sendJson(response, 200, { output });
+      } catch (error) {
+        sendJson(response, error instanceof SyntaxError ? 400 : 500, {
+          error: error.message || "Generation failed."
+        });
+      }
       return;
     }
 
@@ -68,3 +75,17 @@ const server = http.createServer(async (request, response) => {
 server.listen(port, "127.0.0.1", () => {
   console.log(`CourseForge running at http://127.0.0.1:${port}`);
 });
+
+function sendJson(response, status, payload) {
+  response.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+  response.end(JSON.stringify(payload));
+}
+
+async function readJsonRequest(request) {
+  const chunks = [];
+  for await (const chunk of request) {
+    chunks.push(chunk);
+  }
+
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}

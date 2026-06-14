@@ -18,6 +18,11 @@ Example response:
         "detail": "Each question has enough information to answer."
       }
     ],
+    "safety": {
+      "level": "clear",
+      "label": "Neutral Review",
+      "reason": "No blocking issue detected."
+    },
     "items": [
       {
         "title": "Q1",
