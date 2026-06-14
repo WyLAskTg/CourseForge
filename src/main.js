@@ -1065,7 +1065,7 @@ function renderInlineText(value) {
 }
 
 function prettifyGeneratedText(value) {
-  return String(value || "")
+  return normalizeLatexEscapes(String(value || ""))
     .replace(/\r\n/g, "\n")
     .replace(/\\n(?![A-Za-z])/g, "\n")
     .replace(/[ \t]+(\([a-z]\))/gi, "\n$1")
@@ -1073,6 +1073,12 @@ function prettifyGeneratedText(value) {
     .replace(/[ \t]+(Answer|Solution|Proof|Rubric|Reason|Therefore|Hence):/gi, "\n\n$1:")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function normalizeLatexEscapes(value) {
+  return value
+    .replace(/\\{2,}(?=[()[\]{}A-Za-z])/g, "\\")
+    .replace(/\\\s+([()[\]])/g, "\\$1");
 }
 
 function normalizeBareLatex(value) {
