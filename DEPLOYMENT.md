@@ -31,4 +31,5 @@ This project is a static website. It can be published as a normal public website
 
 - The page is public after deployment, but user data currently stays in each browser's `localStorage`.
 - PDF and DOCX parsing libraries are loaded from CDN when needed.
-- For shared accounts, login, cloud storage, and real AI generation, add a backend API and database.
+- Real AI generation must be implemented in `POST /api/generate`. See `API_CONTRACT.md`.
+- For shared accounts, login, cloud storage, and persistent document libraries, add a backend API and database.

@@ -16,7 +16,33 @@ const mimeTypes = {
 
 const server = http.createServer(async (request, response) => {
   try {
-    const requestedPath = decodeURIComponent(new URL(request.url, `http://localhost:${port}`).pathname);
+    const url = new URL(request.url, `http://localhost:${port}`);
+
+    if (url.pathname === "/api/generate") {
+      if (request.method !== "POST") {
+        response.writeHead(405, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ error: "Method not allowed" }));
+        return;
+      }
+
+      let body = "";
+      request.on("data", (chunk) => {
+        body += chunk;
+      });
+      request.on("end", () => {
+        response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(
+          JSON.stringify({
+            configured: false,
+            error: "AI backend is not connected. Implement this endpoint to call a real model and return final user-facing JSON.",
+            received: body ? "request body received" : "empty body"
+          })
+        );
+      });
+      return;
+    }
+
+    const requestedPath = decodeURIComponent(url.pathname);
     const safePath = requestedPath === "/" ? "/index.html" : requestedPath;
     const filePath = path.normalize(path.join(root, safePath));
 

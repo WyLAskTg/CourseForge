@@ -1,4 +1,4 @@
-const STORAGE_KEY = "courseforge-state-v2";
+const STORAGE_KEY = "courseforge-state-v3";
 const LEGACY_STORAGE_KEY = "courseforge-state-v1";
 const TEXT_LIMIT = 120000;
 
@@ -46,6 +46,7 @@ let includeAnswers = true;
 let audience = state.courses[0]?.audience || "学生";
 let extraRequirement = "";
 let isParsing = false;
+let isGenerating = false;
 let parseMessage = "";
 let parserCache = {};
 
@@ -148,8 +149,8 @@ function render() {
                   <p class="eyebrow">生成配置 / Generation Setup</p>
                   <h2>${bi(selectedTaskOption.label, selectedTaskOption.enLabel)}</h2>
                 </div>
-                <button class="primary-action" id="generateBtn" type="button">
-                  ${icon("sparkles")}<span>生成 / Generate</span>
+                <button class="primary-action" id="generateBtn" type="button" ${isGenerating ? "disabled" : ""}>
+                  ${icon(isGenerating ? "loader-2" : "sparkles", isGenerating ? "spin" : "")}<span>${isGenerating ? "生成中 / Generating" : "生成 / Generate"}</span>
                 </button>
               </div>
 
@@ -352,16 +353,38 @@ async function handleFilesSelected(event) {
   render();
 }
 
-function handleGenerate() {
+async function handleGenerate() {
   const activeCourse = getActiveCourse();
-  if (!activeCourse) return;
+  const courseDocuments = getCourseDocuments();
+  const corpus = getCorpus(courseDocuments);
+  if (!activeCourse || isGenerating) return;
 
-  const output = generateStudyOutput({
-    task: selectedTask,
-    corpus: getCorpus(getCourseDocuments()),
-    courseName: activeCourse.name,
-    settings: { difficulty, questionCount, includeAnswers, audience }
-  });
+  const safety = analyzeSafety(corpus);
+  let output;
+
+  if (safety.level === "blocked") {
+    output = buildBlockedOutput(safety);
+  } else {
+    isGenerating = true;
+    render();
+
+    try {
+      output = await requestAiGeneration(
+        buildGenerationRequest({
+          task: selectedTask,
+          course: activeCourse,
+          documents: courseDocuments,
+          corpus,
+          safety,
+          settings: { difficulty, questionCount, includeAnswers, audience, extraRequirement }
+        })
+      );
+    } catch (error) {
+      output = buildBackendNotConnectedOutput(error, safety);
+    } finally {
+      isGenerating = false;
+    }
+  }
 
   const generation = {
     id: crypto.randomUUID(),
@@ -375,6 +398,130 @@ function handleGenerate() {
   persist({ ...state, generations: [generation, ...state.generations] });
   activeGenerationId = generation.id;
   render();
+}
+
+function buildGenerationRequest({ task, course, documents, corpus, safety, settings }) {
+  return {
+    task,
+    course: {
+      id: course.id,
+      name: course.name,
+      audience: settings.audience
+    },
+    settings: {
+      difficulty: settings.difficulty,
+      questionCount: settings.questionCount,
+      includeAnswers: settings.includeAnswers,
+      extraRequirement: settings.extraRequirement
+    },
+    safety,
+    materials: documents.map((document) => ({
+      id: document.id,
+      name: document.name,
+      type: document.type,
+      text: document.text
+    })),
+    corpus,
+    outputContract: {
+      title: "string",
+      type: "knowledge | pitfalls | quiz | mock | refusal",
+      checks: [{ label: "string", status: "pass | review | blocked", detail: "string" }],
+      items: [{ title: "string", body: "string", answer: "string optional", meta: ["string"], checks: [] }]
+    },
+    generationRules: [
+      "Use the uploaded course materials as source context.",
+      "Generate final student-facing content only. Do not return prompts, instructions, or hidden reasoning.",
+      "For quizzes and mock exams, every question must be answerable from the question conditions and course context.",
+      "Do not reuse decisive data, cases, wording, or contexts from uploaded exams."
+    ]
+  };
+}
+
+async function requestAiGeneration(payload) {
+  const response = await fetch("/api/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = null;
+  }
+
+  if (!response.ok) {
+    const message = data?.error || `AI backend returned HTTP ${response.status}`;
+    throw new Error(message);
+  }
+
+  if (data?.configured === false) {
+    throw new Error(data.error || "AI backend is not configured.");
+  }
+
+  return normalizeAiOutput(data);
+}
+
+function normalizeAiOutput(data) {
+  const output = data?.output || data;
+  if (!output || !Array.isArray(output.items)) {
+    throw new Error("AI backend returned an invalid output shape.");
+  }
+
+  return {
+    title: output.title || "生成结果 / Generated Output",
+    type: output.type || selectedTask,
+    safety: output.safety || analyzeSafety(getCorpus(getCourseDocuments())),
+    checks: Array.isArray(output.checks) ? output.checks : [],
+    items: output.items.map((item, index) => ({
+      title: item.title || `Item ${index + 1}`,
+      body: item.body || "",
+      answer: item.answer || "",
+      meta: Array.isArray(item.meta) ? item.meta : [],
+      checks: Array.isArray(item.checks) ? item.checks : []
+    }))
+  };
+}
+
+function buildBlockedOutput(safety) {
+  return {
+    title: "生成已暂停 / Generation Paused",
+    type: "refusal",
+    safety,
+    checks: [
+      { label: "安全审查 / Safety Review", status: "blocked", detail: safety.reason },
+      { label: "生成状态 / Generation Status", status: "blocked", detail: "已停止输出 / Output stopped" }
+    ],
+    items: [
+      {
+        title: "抱歉我无法生成 / Sorry, I cannot generate this",
+        body: `因为上传资料中包含${safety.reason}。请替换为客观课程资料，或删除带有劝服、煽动、歧视、宣传倾向的段落后再试。 / The uploaded material contains disallowed persuasive, discriminatory, or harmful framing. Please replace it with objective course material and try again.`
+      }
+    ]
+  };
+}
+
+function buildBackendNotConnectedOutput(error, safety) {
+  return {
+    title: "AI 接口未连接 / AI Backend Not Connected",
+    type: "system",
+    safety,
+    checks: [
+      { label: "接口状态 / API Status", status: "review", detail: "未收到真实 AI 生成结果 / No real AI output was returned" },
+      { label: "本地模板 / Local Templates", status: "blocked", detail: "已禁用假生成 / Mock generation is disabled" }
+    ],
+    items: [
+      {
+        title: "需要接入生成接口 / Connect a Generation API",
+        body: `当前前端已经把课程资料、用户设置和生成规则发送到 /api/generate，但后端还没有连接真实 AI 服务。错误：${error.message} / The frontend sent the course materials, settings, and rules to /api/generate, but no real AI service is connected yet. Error: ${error.message}`
+      },
+      {
+        title: "接口返回格式 / Expected API Response",
+        body: `后端应返回 JSON：{ "output": { "title": "...", "type": "quiz", "checks": [...], "items": [{ "title": "...", "body": "final student-facing content", "answer": "final answer" }] } }。注意：body 和 answer 必须是最终给学生/教师看的内容，不要返回 prompt。 / Return final user-facing JSON only; do not return prompts.`
+      }
+    ]
+  };
 }
 
 async function extractTextFromFile(file) {
