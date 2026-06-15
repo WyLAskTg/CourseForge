@@ -898,6 +898,10 @@ h2 {
 .circuit-polarity,
 .circuit-meter-label {
   fill: #111827;
+  stroke: #ffffff;
+  stroke-linejoin: round;
+  stroke-width: 5px;
+  paint-order: stroke fill;
   font-family: Georgia, "Times New Roman", "Microsoft YaHei", serif;
   font-size: 15px;
   font-weight: 800;
@@ -915,6 +919,7 @@ h2 {
 .circuit-meter-label {
   font-size: 18px;
   font-style: normal;
+  stroke-width: 3px;
 }
 
 .circuit-symbol-name {

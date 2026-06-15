@@ -699,7 +699,7 @@ function buildGenerationRequest({ task, course, documents, corpus, safety, setti
       "Use clear line breaks for multi-part questions, solutions, and marking guides.",
       "Do not use external image URLs or Markdown image links.",
       "For circuit questions, use only the CourseForge circuit DSL in a fenced circuit block. Do not use ASCII art or placeholder images.",
-      "Circuit DSL examples: size W H; node ID X Y; wire A B; dot A; resistor R1 2ohm A B; capacitor C1 1nF A B; lamp L A B; switch S1 A B open; ammeter A A B; battery U_S 12V A B; arrow I A B; ground G.",
+      "Circuit DSL examples: size W H; node ID X Y; wire A B; dot A; resistor R1 2ohm A B; capacitor C1 1nF A B; lamp L A B; switch S1 A B open; ammeter A A B; battery U_S 12V A B; arrow I A B; ground G. Leave generous spacing between labels and components.",
       "Use standard LaTeX delimiters for math: inline \\(...\\), display \\[...\\]."
     ]
   };
@@ -1504,6 +1504,7 @@ function isCircuitDiagramLanguage(language) {
 function renderCircuitDiagram(source) {
   const diagram = parseCircuitDiagram(source);
   if (!diagram) return "";
+  diagram.labelBoxes = [];
 
   const parts = [
     `<svg viewBox="0 0 ${diagram.width} ${diagram.height}" role="img" aria-label="${escapeAttr(t("电路图", "Circuit diagram"))}">`,
@@ -1522,7 +1523,7 @@ function renderCircuitDiagram(source) {
     if (item.type === "current") parts.push(renderCircuitSource(diagram, item, "current"));
     if (item.type === "arrow") parts.push(renderCircuitArrow(diagram, item));
     if (item.type === "ground") parts.push(renderCircuitGround(diagram, item));
-    if (item.type === "label") parts.push(renderCircuitText(item.x, item.y, item.text, "circuit-title"));
+    if (item.type === "label") parts.push(renderCircuitPlacedText(diagram, item.x, item.y, item.text, "circuit-title"));
   }
 
   const degrees = circuitNodeDegrees(diagram);
@@ -1630,7 +1631,7 @@ function renderCircuitResistor(diagram, item) {
     circuitLine(from, start, "circuit-wire"),
     `<polyline class="circuit-component" points="${points.join(" ")}" />`,
     circuitLine(end, to, "circuit-wire"),
-    renderCircuitText(mid.x + normal.x * -30, mid.y + normal.y * -30, circuitComponentLabel(item))
+    renderCircuitComponentLabel(diagram, geometry, circuitComponentLabel(item))
   ].join("");
 }
 
@@ -1659,7 +1660,7 @@ function renderCircuitCapacitor(diagram, item) {
       { x: plateB.x + normal.x * plateHalf, y: plateB.y + normal.y * plateHalf },
       "circuit-component"
     ),
-    renderCircuitText(mid.x + normal.x * -38, mid.y + normal.y * -38, circuitComponentLabel(item))
+    renderCircuitComponentLabel(diagram, geometry, circuitComponentLabel(item), { distance: 40 })
   ].join("");
 }
 
@@ -1678,7 +1679,7 @@ function renderCircuitLamp(diagram, item) {
     `<circle class="circuit-symbol" cx="${mid.x}" cy="${mid.y}" r="${radius}" />`,
     circuitLine({ x: mid.x - 10, y: mid.y - 10 }, { x: mid.x + 10, y: mid.y + 10 }, "circuit-component"),
     circuitLine({ x: mid.x + 10, y: mid.y - 10 }, { x: mid.x - 10, y: mid.y + 10 }, "circuit-component"),
-    renderCircuitText(mid.x + normal.x * -38, mid.y + normal.y * -38, label)
+    renderCircuitComponentLabel(diagram, geometry, label, { distance: 42 })
   ].join("");
 }
 
@@ -1705,7 +1706,7 @@ function renderCircuitSwitch(diagram, item) {
     `<circle class="circuit-contact" cx="${contactA.x}" cy="${contactA.y}" r="3.4" />`,
     `<circle class="circuit-contact" cx="${contactB.x}" cy="${contactB.y}" r="3.4" />`,
     circuitLine(contactA, bladeEnd, "circuit-component"),
-    renderCircuitText(mid.x + normal.x * 28, mid.y + normal.y * 28, formatCircuitId(item.id || "S"))
+    renderCircuitComponentLabel(diagram, geometry, formatCircuitId(item.id || "S"), { distance: 34, preferredSide: 1 })
   ].join("");
 }
 
@@ -1748,7 +1749,7 @@ function renderCircuitBattery(diagram, item) {
       { x: shortCenter.x + normal.x * shortHalf, y: shortCenter.y + normal.y * shortHalf },
       "circuit-component"
     ),
-    label ? renderCircuitText(mid.x + normal.x * 38, mid.y + normal.y * 38, label) : ""
+    label ? renderCircuitComponentLabel(diagram, geometry, label, { distance: 42, preferredSide: 1 }) : ""
   ].join("");
 }
 
@@ -1766,7 +1767,7 @@ function renderCircuitSource(diagram, item, kind) {
     circuitLine(from, leadA, "circuit-wire"),
     circuitLine(leadB, to, "circuit-wire"),
     `<circle class="circuit-source" cx="${mid.x}" cy="${mid.y}" r="${radius}" />`,
-    renderCircuitText(mid.x + normal.x * -38, mid.y + normal.y * -38, label)
+    renderCircuitComponentLabel(diagram, geometry, label, { distance: 42 })
   ];
 
   if (kind === "voltage") {
@@ -1792,7 +1793,7 @@ function renderCircuitArrow(diagram, item) {
   const end = { x: to.x + normal.x * offset, y: to.y + normal.y * offset };
   return [
     circuitLine(start, end, "circuit-arrow-line"),
-    renderCircuitText(mid.x + normal.x * (offset - 10), mid.y + normal.y * (offset - 10), formatCircuitId(item.id))
+    renderCircuitComponentLabel(diagram, geometry, formatCircuitId(item.id), { distance: Math.abs(offset) + 18 })
   ].join("");
 }
 
@@ -1855,8 +1856,121 @@ function circuitLine(from, to, className) {
   return `<line class="${className}" x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" />`;
 }
 
+function renderCircuitComponentLabel(diagram, geometry, text, options = {}) {
+  const label = String(text || "").trim();
+  if (!label) return "";
+
+  const position = chooseCircuitLabelPosition(diagram, geometry, label, options);
+  return renderCircuitPlacedText(diagram, position.x, position.y, label, options.className || "circuit-label");
+}
+
+function chooseCircuitLabelPosition(diagram, geometry, text, options = {}) {
+  const candidates = circuitLabelCandidates(geometry, text, options);
+  const ranked = candidates
+    .map((candidate) => {
+      const box = circuitTextBox(candidate.x, candidate.y, text);
+      return { ...candidate, box, penalty: circuitLabelPenalty(diagram, box) };
+    })
+    .sort((a, b) => a.penalty - b.penalty || a.rank - b.rank);
+
+  return ranked[0] || { x: geometry.mid.x, y: geometry.mid.y - 28 };
+}
+
+function circuitLabelCandidates(geometry, text, options = {}) {
+  const { mid, unit, normal } = geometry;
+  const mostlyVertical = Math.abs(unit.y) > Math.abs(unit.x);
+  const textAwareDistance = mostlyVertical
+    ? Math.min(92, estimateCircuitTextWidth(text) / 2 + 28)
+    : 36;
+  const baseDistance = Math.max(options.distance || 0, textAwareDistance);
+  const preferredSide = options.preferredSide || -1;
+  const sideOrder = [preferredSide, -preferredSide];
+  const distances = [baseDistance, baseDistance + 18, baseDistance + 34, baseDistance + 52];
+  const alongOffsets = [0, -26, 26, -48, 48, -70, 70];
+  const candidates = [];
+
+  distances.forEach((distance, distanceIndex) => {
+    sideOrder.forEach((side, sideIndex) => {
+      alongOffsets.forEach((along, alongIndex) => {
+        candidates.push({
+          x: mid.x + normal.x * distance * side + unit.x * along,
+          y: mid.y + normal.y * distance * side + unit.y * along,
+          rank: distanceIndex * 100 + sideIndex * 20 + alongIndex
+        });
+      });
+    });
+  });
+
+  return candidates;
+}
+
+function renderCircuitPlacedText(diagram, x, y, text, className = "circuit-label") {
+  const box = circuitTextBox(x, y, text);
+  diagram.labelBoxes?.push(box);
+  return renderCircuitText(x, y, text, className);
+}
+
 function renderCircuitText(x, y, text, className = "circuit-label") {
   return `<text class="${className}" x="${x}" y="${y}" text-anchor="middle">${renderCircuitTextContent(text, className)}</text>`;
+}
+
+function circuitTextBox(x, y, text) {
+  const width = Math.max(24, Math.min(190, estimateCircuitTextWidth(text)));
+  return {
+    left: x - width / 2 - 5,
+    right: x + width / 2 + 5,
+    top: y - 18,
+    bottom: y + 7
+  };
+}
+
+function estimateCircuitTextWidth(text) {
+  const plain = String(text || "")
+    .replace(/[\u2080-\u2089]/g, "0")
+    .replace(/_/g, "");
+  let width = 0;
+
+  for (const char of plain) {
+    if (/[A-Za-z0-9]/.test(char)) width += 8.5;
+    else if (char === " ") width += 5;
+    else if ("=+-*/".includes(char)) width += 7;
+    else width += 10;
+  }
+
+  return width + 8;
+}
+
+function circuitLabelPenalty(diagram, box) {
+  let penalty = 0;
+  const margin = 5;
+
+  for (const existing of diagram.labelBoxes || []) {
+    if (circuitBoxesOverlap(box, existing, margin)) {
+      penalty += circuitOverlapArea(box, existing, margin) + 1000;
+    }
+  }
+
+  if (box.left < 8) penalty += (8 - box.left) * 8;
+  if (box.right > diagram.width - 8) penalty += (box.right - diagram.width + 8) * 8;
+  if (box.top < 8) penalty += (8 - box.top) * 8;
+  if (box.bottom > diagram.height - 8) penalty += (box.bottom - diagram.height + 8) * 8;
+
+  return penalty;
+}
+
+function circuitBoxesOverlap(a, b, margin = 0) {
+  return !(
+    a.right + margin < b.left ||
+    b.right + margin < a.left ||
+    a.bottom + margin < b.top ||
+    b.bottom + margin < a.top
+  );
+}
+
+function circuitOverlapArea(a, b, margin = 0) {
+  const xOverlap = Math.max(0, Math.min(a.right + margin, b.right + margin) - Math.max(a.left - margin, b.left - margin));
+  const yOverlap = Math.max(0, Math.min(a.bottom + margin, b.bottom + margin) - Math.max(a.top - margin, b.top - margin));
+  return xOverlap * yOverlap;
 }
 
 function circuitComponentLabel(item) {
