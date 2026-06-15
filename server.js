@@ -2,7 +2,7 @@ import http from "node:http";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { generateCourseOutput } from "./functions/api/generate.js";
+import { generateCourseOutput, resolveGenerationProvider } from "./functions/api/generate.js";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 5173);
@@ -25,22 +25,19 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
-      const apiKey = process.env.OPENAI_API_KEY;
-      if (!apiKey) {
+      const provider = resolveGenerationProvider(process.env);
+      if (!provider) {
         sendJson(response, 200, {
           configured: false,
-          error: "OPENAI_API_KEY is not configured. Set it before starting the local server."
+          error: "DEEPSEEK_API_KEY is not configured. Set it before starting the local server."
         });
         return;
       }
 
       try {
         const payload = await readJsonRequest(request);
-        const output = await generateCourseOutput(payload, {
-          apiKey,
-          model: process.env.OPENAI_MODEL
-        });
-        sendJson(response, 200, { output });
+        const output = await generateCourseOutput(payload, provider);
+        sendJson(response, 200, { output, provider: provider.name, model: provider.model });
       } catch (error) {
         sendJson(response, error instanceof SyntaxError ? 400 : 500, {
           error: error.message || "Generation failed."

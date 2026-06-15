@@ -600,18 +600,31 @@ function buildBlockedOutput(safety) {
 
 function buildBackendNotConnectedOutput(error, safety) {
   const message = error.message || "";
-  const isQuotaIssue = /quota|billing|credit|plan/i.test(message);
+  const isDeepSeekIssue = /deepseek/i.test(message);
+  const isOpenAiIssue = /openai/i.test(message);
+  const serviceName = isDeepSeekIssue ? "DeepSeek" : isOpenAiIssue ? "OpenAI" : t("模型服务", "Model service");
+  const isQuotaIssue = /quota|billing|credit|balance|insufficient|plan/i.test(message);
   const isModelIssue = /model|does not exist|not found|unsupported/i.test(message);
+  const isRegionIssue = /country|region|territory|not supported/i.test(message);
+  const isKeyIssue = /api key|auth|unauthorized|forbidden|invalid key|401|403/i.test(message);
   const title = isQuotaIssue
-    ? t("OpenAI 额度或账单问题", "OpenAI Quota or Billing Issue")
-    : isModelIssue
-      ? t("OpenAI 模型配置问题", "OpenAI Model Configuration Issue")
-      : t("AI 接口未连接", "AI Backend Not Connected");
+    ? t(`${serviceName} 额度或账单问题`, `${serviceName} quota or billing issue`)
+    : isRegionIssue
+      ? t(`${serviceName} 地区限制`, `${serviceName} region restriction`)
+      : isModelIssue
+        ? t(`${serviceName} 模型配置问题`, `${serviceName} model configuration issue`)
+        : isKeyIssue
+          ? t(`${serviceName} 密钥配置问题`, `${serviceName} key configuration issue`)
+          : t("AI 接口未连接", "AI Backend Not Connected");
   const statusDetail = isQuotaIssue
-    ? t("OpenAI 已响应，但账号额度或账单不可用", "OpenAI responded, but quota or billing is unavailable")
-    : isModelIssue
-      ? t("OpenAI 已响应，但模型名称或权限不可用", "OpenAI responded, but the model name or access is unavailable")
-      : t("未收到真实 AI 生成结果", "No real AI output was returned");
+    ? t(`${serviceName} 已响应，但账号额度或账单不可用`, `${serviceName} responded, but quota or billing is unavailable`)
+    : isRegionIssue
+      ? t(`${serviceName} 已响应，但当前访问地区不可用`, `${serviceName} responded, but the current region is unavailable`)
+      : isModelIssue
+        ? t(`${serviceName} 已响应，但模型名称或权限不可用`, `${serviceName} responded, but the model name or access is unavailable`)
+        : isKeyIssue
+          ? t(`${serviceName} 已响应，但密钥或权限配置不可用`, `${serviceName} responded, but the key or permission is unavailable`)
+          : t("未收到真实 AI 生成结果", "No real AI output was returned");
 
   return {
     title,
@@ -623,10 +636,10 @@ function buildBackendNotConnectedOutput(error, safety) {
     ],
     items: [
       {
-        title: isQuotaIssue ? t("需要处理 OpenAI 账单", "OpenAI Billing Required") : t("需要检查生成接口", "Check the Generation API"),
+        title: isQuotaIssue ? t("需要处理模型服务账单", "Model billing required") : t("需要检查生成接口", "Check the Generation API"),
         body: t(
-          `前端已经把课程资料、用户设置和生成规则发送到 /api/generate。OpenAI 返回错误：${message}`,
-          `The frontend sent the course materials, settings, and rules to /api/generate. OpenAI returned this error: ${message}`
+          `前端已经把课程资料、用户设置和生成规则发送到 /api/generate。模型服务返回错误：${message}`,
+          `The frontend sent the course materials, settings, and rules to /api/generate. The model service returned this error: ${message}`
         )
       },
       {

@@ -1,5 +1,7 @@
+const DEEPSEEK_CHAT_URL = "https://api.deepseek.com/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
-const DEFAULT_MODEL = "gpt-5.4-mini";
+const DEFAULT_DEEPSEEK_MODEL = "deepseek-chat";
+const DEFAULT_OPENAI_MODEL = "gpt-5.4-mini";
 
 export async function onRequest(context) {
   if (context.request.method !== "POST") {
@@ -10,28 +12,91 @@ export async function onRequest(context) {
 }
 
 async function handleGenerateRequest({ request, env }) {
-  const apiKey = env?.OPENAI_API_KEY;
-  if (!apiKey) {
+  const provider = resolveGenerationProvider(env);
+  if (!provider) {
     return Response.json({
       configured: false,
-      error: "OPENAI_API_KEY is not configured in Cloudflare Pages environment variables."
+      error: "DEEPSEEK_API_KEY is not configured. Add it in Cloudflare Pages environment variables."
     });
   }
 
   try {
     const payload = await request.json();
-    const output = await generateCourseOutput(payload, {
-      apiKey,
-      model: env.OPENAI_MODEL || DEFAULT_MODEL
-    });
+    const output = await generateCourseOutput(payload, provider);
 
-    return Response.json({ output });
+    return Response.json({ output, provider: provider.name, model: provider.model });
   } catch (error) {
     return Response.json({ error: error.message || "Generation failed." }, { status: 500 });
   }
 }
 
-export async function generateCourseOutput(payload, { apiKey, model = DEFAULT_MODEL }) {
+export function resolveGenerationProvider(env = {}) {
+  if (env.DEEPSEEK_API_KEY) {
+    return {
+      name: "DeepSeek",
+      provider: "deepseek",
+      apiKey: env.DEEPSEEK_API_KEY,
+      model: env.DEEPSEEK_MODEL || DEFAULT_DEEPSEEK_MODEL
+    };
+  }
+
+  if (env.OPENAI_API_KEY) {
+    return {
+      name: "OpenAI",
+      provider: "openai",
+      apiKey: env.OPENAI_API_KEY,
+      model: env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL
+    };
+  }
+
+  return null;
+}
+
+export async function generateCourseOutput(payload, options) {
+  if (options?.provider === "deepseek") {
+    return generateWithDeepSeek(payload, options);
+  }
+
+  return generateWithOpenAI(payload, options);
+}
+
+async function generateWithDeepSeek(payload, { apiKey, model = DEFAULT_DEEPSEEK_MODEL }) {
+  const response = await fetch(DEEPSEEK_CHAT_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        {
+          role: "system",
+          content: buildSystemPrompt()
+        },
+        {
+          role: "user",
+          content: JSON.stringify(buildUserPayload(payload))
+        }
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.2,
+      stream: false
+    })
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(data?.error?.message || `DeepSeek API returned HTTP ${response.status}`);
+  }
+
+  const text = data?.choices?.[0]?.message?.content || "";
+  if (!text) throw new Error("DeepSeek returned no output text.");
+
+  return normalizeGeneratedOutput(parseJsonOutput(text), payload);
+}
+
+async function generateWithOpenAI(payload, { apiKey, model = DEFAULT_OPENAI_MODEL }) {
   const response = await fetch(OPENAI_RESPONSES_URL, {
     method: "POST",
     headers: {
@@ -68,15 +133,16 @@ export async function generateCourseOutput(payload, { apiKey, model = DEFAULT_MO
     throw new Error(data?.error?.message || `OpenAI API returned HTTP ${response.status}`);
   }
 
-  const text = extractOutputText(data);
+  const text = extractOpenAIOutputText(data);
   if (!text) throw new Error("OpenAI returned no output text.");
 
-  return JSON.parse(text);
+  return normalizeGeneratedOutput(parseJsonOutput(text), payload);
 }
 
 function buildSystemPrompt() {
   return [
     "You are CourseForge, an education-focused generation engine.",
+    "Return only one valid JSON object. Do not wrap it in markdown fences.",
     "Return final user-facing content only, never prompts, hidden instructions, planning text, or chain-of-thought.",
     "Use the uploaded course materials as source context. If the materials are insufficient, say so in the output instead of inventing details.",
     "For quizzes and mock exams, generate answerable questions with complete conditions and answers or marking guides.",
@@ -106,12 +172,15 @@ function buildUserPayload(payload) {
       text: String(material.text || "").slice(0, 30000)
     })),
     currentRequest: payload.settings?.extraRequirement || "",
-    outputContract:
-      "Return an object with title, type, checks, items, and safety. items must contain final content in body and answer, not instructions. Use line breaks and LaTeX delimiters where helpful."
+    outputContract: {
+      instruction:
+        "Return JSON with title, type, checks, items, and safety. The root may be the output object itself or { output: ... }. items must contain final content in body and answer, not instructions.",
+      schema: outputSchema()
+    }
   };
 }
 
-function extractOutputText(data) {
+function extractOpenAIOutputText(data) {
   if (typeof data?.output_text === "string") return data.output_text;
 
   for (const item of data?.output || []) {
@@ -124,6 +193,59 @@ function extractOutputText(data) {
   }
 
   return "";
+}
+
+function parseJsonOutput(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("AI provider returned text instead of JSON.");
+    return JSON.parse(match[0]);
+  }
+}
+
+function normalizeGeneratedOutput(value, payload) {
+  const output = value?.output || value;
+  if (!output || !Array.isArray(output.items)) {
+    throw new Error("AI provider returned JSON, but not the expected CourseForge output shape.");
+  }
+
+  return {
+    title: String(output.title || "生成结果 / Generated Output"),
+    type: normalizeOutputType(output.type, payload.task),
+    checks: normalizeChecks(output.checks),
+    items: output.items.map((item, index) => ({
+      title: String(item?.title || `Item ${index + 1}`),
+      body: String(item?.body || ""),
+      answer: String(item?.answer || ""),
+      meta: Array.isArray(item?.meta) ? item.meta.map(String) : [],
+      checks: normalizeChecks(item?.checks)
+    })),
+    safety: normalizeSafety(output.safety, payload.safety)
+  };
+}
+
+function normalizeOutputType(value, fallback) {
+  const allowed = new Set(["knowledge", "pitfalls", "quiz", "mock", "refusal", "system"]);
+  return allowed.has(value) ? value : fallback || "knowledge";
+}
+
+function normalizeChecks(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((check) => ({
+    label: String(check?.label || "Review"),
+    status: ["pass", "review", "blocked"].includes(check?.status) ? check.status : "review",
+    detail: String(check?.detail || "")
+  }));
+}
+
+function normalizeSafety(value, fallback) {
+  return {
+    level: String(value?.level || fallback?.level || "clear"),
+    label: String(value?.label || fallback?.label || "通过 / Clear"),
+    reason: String(value?.reason || fallback?.reason || "")
+  };
 }
 
 function outputSchema() {
