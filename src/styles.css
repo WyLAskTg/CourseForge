@@ -109,6 +109,104 @@ button:disabled {
   font-size: 18px;
 }
 
+.auth-card {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+
+.auth-heading,
+.auth-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.auth-heading strong {
+  font-size: 14px;
+}
+
+.auth-status {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: var(--muted);
+  background: #eef2f7;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.auth-status.synced {
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.auth-status.syncing,
+.auth-status.pending,
+.auth-status.checking {
+  color: var(--blue);
+  background: #eaf1ff;
+}
+
+.auth-status.error,
+.auth-status.unavailable {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.auth-card small,
+.auth-email {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.auth-email {
+  overflow: hidden;
+  margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auth-form {
+  display: grid;
+  gap: 8px;
+}
+
+.auth-form input {
+  height: 38px;
+}
+
+.auth-button {
+  flex: 1 1 0;
+  min-height: 34px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.auth-button.primary {
+  color: white;
+  background: var(--teal);
+}
+
+.auth-button.secondary {
+  color: var(--teal-dark);
+  border: 1px solid rgba(15, 118, 110, 0.22);
+  background: var(--teal-soft);
+}
+
+.auth-button.ghost {
+  color: var(--muted);
+  border: 1px solid var(--line);
+  background: white;
+}
+
 .bi {
   display: inline-grid;
   gap: 2px;

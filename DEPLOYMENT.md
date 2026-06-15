@@ -12,9 +12,14 @@ This project can be published as a normal public website. AI generation requires
    - Output Directory: `.`
 4. Deploy.
 5. Open the Pages project settings and add environment variables:
-   - `OPENAI_API_KEY`: your OpenAI API key
-   - `OPENAI_MODEL`: optional model override, such as `gpt-5.5`
-6. Redeploy after adding the environment variables.
+   - `DEEPSEEK_API_KEY`: your DeepSeek API key
+   - `DEEPSEEK_MODEL`: optional model override, defaults to `deepseek-chat`
+   - `AI_PROVIDER`: optional, set to `openai` only if you want to use OpenAI instead
+   - `OPENAI_API_KEY`: optional OpenAI fallback key
+   - `OPENAI_MODEL`: optional OpenAI model override
+6. Create a Cloudflare D1 database and bind it to the Pages project as `COURSEFORGE_DB`.
+7. Create a Cloudflare R2 bucket and bind it to the Pages project as `COURSEFORGE_FILES`.
+8. Redeploy after adding variables and bindings. The app creates its D1 tables automatically on first use.
 
 ## Other hosts
 
@@ -29,7 +34,7 @@ npm start
 
 ## Notes
 
-- The page is public after deployment, but user data currently stays in each browser's `localStorage`.
+- The page is public after deployment. Without D1/R2 bindings, user data stays in each browser's `localStorage`; with D1/R2 bindings, signed-in users can sync courses, material text, uploaded files, and generation history.
 - PDF and DOCX parsing libraries are loaded from CDN when needed.
 - Real AI generation runs through `POST /api/generate`. See `API_CONTRACT.md`.
-- For shared accounts, login, cloud storage, and persistent document libraries, add a backend API and database.
+- Login and cloud sync use Cloudflare Pages Functions, D1, and R2.

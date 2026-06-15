@@ -2,6 +2,7 @@ const STORAGE_KEY = "courseforge-state-v3";
 const LEGACY_STORAGE_KEY = "courseforge-state-v1";
 const UI_LANGUAGE_KEY = "courseforge-ui-language";
 const TEXT_LIMIT = 120000;
+const SYNC_DEBOUNCE_MS = 900;
 const SEEDED_COURSE_IDS = new Set(["course-foundations", "course-humanities"]);
 
 const defaultState = {
@@ -49,8 +50,13 @@ let parseMessage = "";
 let parserCache = {};
 let visibleAnswerKeys = new Set();
 let uiLanguage = loadUiLanguage();
+let currentUser = null;
+let cloudSyncStatus = { level: "local", detail: "" };
+let cloudSyncTimer = null;
+let suppressCloudSync = false;
 
 render();
+initializeCloudSession();
 
 function render() {
   document.documentElement.lang = uiLanguage === "zh" ? "zh-CN" : "en";
@@ -78,6 +84,8 @@ function render() {
             ${bi("课程复习与测评工作台", "Course review and assessment workspace")}
           </div>
         </div>
+
+        ${authPanel()}
 
         <form class="course-form" id="courseForm">
           <div class="form-title">
@@ -248,6 +256,9 @@ function render() {
 }
 
 function attachEvents(activeGeneration) {
+  document.getElementById("authForm")?.addEventListener("submit", handleAuthSubmit);
+  document.getElementById("logoutBtn")?.addEventListener("click", handleLogout);
+  document.getElementById("syncNowBtn")?.addEventListener("click", () => pushCloudState({ renderAfter: true }));
   document.getElementById("courseForm")?.addEventListener("submit", handleCreateCourse);
   document.getElementById("courseName")?.addEventListener("input", (event) => {
     event.target.classList.remove("needs-value");
@@ -329,6 +340,158 @@ function attachEvents(activeGeneration) {
       deleteGeneration(button.dataset.deleteGeneration);
     });
   });
+}
+
+async function initializeCloudSession() {
+  cloudSyncStatus = { level: "checking", code: "checking" };
+
+  try {
+    const data = await apiJson("/api/auth/me");
+    if (!data?.user) {
+      cloudSyncStatus = { level: "local", code: "signedOut" };
+      render();
+      return;
+    }
+
+    currentUser = data.user;
+    cloudSyncStatus = { level: "syncing", code: "syncing" };
+    render();
+    await pullCloudState({ mergeLocal: true });
+    await pushCloudState({ renderAfter: true });
+  } catch (error) {
+    currentUser = null;
+    cloudSyncStatus = error.data?.configured === false
+      ? { level: "unavailable", code: "unavailable", detail: error.message }
+      : { level: "local", code: "signedOut" };
+    render();
+  }
+}
+
+async function handleAuthSubmit(event) {
+  event.preventDefault();
+  const action = event.submitter?.dataset.authAction === "register" ? "register" : "login";
+  const email = document.getElementById("authEmail")?.value.trim();
+  const password = document.getElementById("authPassword")?.value || "";
+
+  cloudSyncStatus = { level: "syncing", code: action === "register" ? "registering" : "loggingIn" };
+  render();
+
+  try {
+    const data = await apiJson(`/api/auth/${action}`, {
+      method: "POST",
+      body: { email, password }
+    });
+
+    currentUser = data.user;
+    cloudSyncStatus = { level: "syncing", code: "syncing" };
+    render();
+    await pullCloudState({ mergeLocal: true });
+    await pushCloudState({ renderAfter: true });
+  } catch (error) {
+    currentUser = null;
+    cloudSyncStatus = { level: "error", code: "authError", detail: error.message };
+    render();
+  }
+}
+
+async function handleLogout() {
+  try {
+    await apiJson("/api/auth/logout", { method: "POST" });
+  } catch {
+    // Local state stays available even if the cloud logout request cannot finish.
+  }
+
+  currentUser = null;
+  cloudSyncStatus = { level: "local", code: "signedOut" };
+  render();
+}
+
+async function pullCloudState({ mergeLocal = true } = {}) {
+  const data = await apiJson("/api/sync");
+  const remoteState = normalizeState(data.state || defaultState);
+  const nextState = mergeLocal ? mergeCourseForgeStates(remoteState, state) : remoteState;
+
+  suppressCloudSync = true;
+  persist(nextState);
+  suppressCloudSync = false;
+  activeCourseId = nextState.courses.some((course) => course.id === activeCourseId)
+    ? activeCourseId
+    : nextState.courses[0]?.id || "";
+  activeGenerationId = nextState.generations.some((generation) => generation.id === activeGenerationId)
+    ? activeGenerationId
+    : "";
+  audience = getActiveCourse()?.audience || audience;
+  cloudSyncStatus = { level: "synced", code: "synced" };
+  render();
+}
+
+function scheduleCloudSync() {
+  if (!currentUser || suppressCloudSync) return;
+
+  cloudSyncStatus = { level: "pending", code: "pending" };
+  window.clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = window.setTimeout(() => {
+    pushCloudState({ renderAfter: true });
+  }, SYNC_DEBOUNCE_MS);
+}
+
+async function pushCloudState({ renderAfter = false } = {}) {
+  if (!currentUser) return;
+
+  window.clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = null;
+  cloudSyncStatus = { level: "syncing", code: "syncing" };
+  if (renderAfter) render();
+
+  try {
+    await apiJson("/api/sync", {
+      method: "POST",
+      body: { state }
+    });
+    cloudSyncStatus = { level: "synced", code: "synced" };
+  } catch (error) {
+    cloudSyncStatus = error.data?.configured === false
+      ? { level: "unavailable", code: "unavailable", detail: error.message }
+      : { level: "error", code: "syncError", detail: error.message };
+  }
+
+  if (renderAfter) render();
+}
+
+async function uploadCloudFile(file, courseId, documentId) {
+  if (!currentUser) return null;
+
+  const formData = new FormData();
+  formData.set("file", file);
+  formData.set("courseId", courseId);
+  formData.set("documentId", documentId);
+
+  const response = await fetch("/api/files", {
+    method: "POST",
+    body: formData,
+    credentials: "same-origin"
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data?.error) throw new Error(data?.error || `Upload failed with HTTP ${response.status}`);
+  return data;
+}
+
+async function apiJson(path, { method = "GET", body } = {}) {
+  const response = await fetch(path, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+    credentials: "same-origin"
+  });
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok || data?.error) {
+    const error = new Error(data?.error || `Request failed with HTTP ${response.status}`);
+    error.data = data;
+    throw error;
+  }
+
+  return data;
 }
 
 function handleCreateCourse(event) {
@@ -416,10 +579,13 @@ async function handleFilesSelected(event) {
 
   const uploaded = [];
   for (const file of files) {
+    const documentId = crypto.randomUUID();
+    let documentRecord;
+
     try {
       const text = await extractTextFromFile(file);
-      uploaded.push({
-        id: crypto.randomUUID(),
+      documentRecord = {
+        id: documentId,
         courseId: activeCourse.id,
         name: file.name,
         type: inferDocumentType(file.name),
@@ -427,10 +593,10 @@ async function handleFilesSelected(event) {
         text,
         safety: analyzeSafety(text),
         createdAt: new Date().toISOString()
-      });
+      };
     } catch (error) {
-      uploaded.push({
-        id: crypto.randomUUID(),
+      documentRecord = {
+        id: documentId,
         courseId: activeCourse.id,
         name: file.name,
         type: "待后端解析 / Backend required",
@@ -438,8 +604,19 @@ async function handleFilesSelected(event) {
         text: "",
         safety: { level: "sensitive", label: "待解析 / Pending", reason: error.message },
         createdAt: new Date().toISOString()
-      });
+      };
     }
+
+    try {
+      const uploadResult = await uploadCloudFile(file, activeCourse.id, documentId);
+      if (uploadResult?.storageKey) {
+        documentRecord.storageKey = uploadResult.storageKey;
+      }
+    } catch (error) {
+      cloudSyncStatus = { level: "error", code: "syncError", detail: error.message };
+    }
+
+    uploaded.push(documentRecord);
   }
 
   persist({ ...state, documents: [...uploaded, ...state.documents] });
@@ -968,6 +1145,25 @@ function formatGenerationText(generation) {
 function persist(nextState) {
   state = normalizeState(nextState);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  scheduleCloudSync();
+}
+
+function mergeCourseForgeStates(remoteState, localState) {
+  const remote = normalizeState(remoteState);
+  const local = normalizeState(localState);
+
+  return normalizeState({
+    courses: mergeRecords(remote.courses, local.courses),
+    documents: mergeRecords(remote.documents, local.documents),
+    generations: mergeRecords(remote.generations, local.generations)
+  });
+}
+
+function mergeRecords(remoteRecords, localRecords) {
+  const merged = new Map();
+  for (const record of remoteRecords) merged.set(record.id, record);
+  for (const record of localRecords) merged.set(record.id, { ...merged.get(record.id), ...record });
+  return [...merged.values()].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 }
 
 function loadState() {
@@ -1009,6 +1205,84 @@ function removeUnusedSeedCourses(value) {
     ...value,
     courses: value.courses.filter((course) => !SEEDED_COURSE_IDS.has(course.id) || usedCourseIds.has(course.id))
   };
+}
+
+function authPanel() {
+  const statusText = cloudStatusText();
+  const detail = cloudStatusDetail();
+
+  if (currentUser) {
+    return `
+      <section class="auth-card">
+        <div class="auth-heading">
+          <strong>${t("云端同步", "Cloud Sync")}</strong>
+          <span class="auth-status ${escapeAttr(cloudSyncStatus.level)}">${escapeHtml(statusText)}</span>
+        </div>
+        <p class="auth-email">${escapeHtml(currentUser.email)}</p>
+        <small>${escapeHtml(detail)}</small>
+        <div class="auth-actions">
+          <button id="syncNowBtn" class="auth-button secondary" type="button">${t("立即同步", "Sync now")}</button>
+          <button id="logoutBtn" class="auth-button ghost" type="button">${t("退出", "Log out")}</button>
+        </div>
+      </section>
+    `;
+  }
+
+  return `
+    <section class="auth-card">
+      <div class="auth-heading">
+        <strong>${t("云端同步", "Cloud Sync")}</strong>
+        <span class="auth-status ${escapeAttr(cloudSyncStatus.level)}">${escapeHtml(statusText)}</span>
+      </div>
+      <small>${escapeHtml(detail)}</small>
+      <form class="auth-form" id="authForm">
+        <input id="authEmail" type="email" autocomplete="email" placeholder="${t("邮箱", "Email")}" />
+        <input id="authPassword" type="password" autocomplete="current-password" placeholder="${t("密码至少 8 位", "Password, 8+ characters")}" />
+        <div class="auth-actions">
+          <button class="auth-button primary" type="submit" data-auth-action="login">${t("登录", "Log in")}</button>
+          <button class="auth-button secondary" type="submit" data-auth-action="register">${t("注册", "Sign up")}</button>
+        </div>
+      </form>
+    </section>
+  `;
+}
+
+function cloudStatusText() {
+  const labels = {
+    checking: t("检查中", "Checking"),
+    registering: t("注册中", "Signing up"),
+    loggingIn: t("登录中", "Logging in"),
+    syncing: t("同步中", "Syncing"),
+    pending: t("待同步", "Pending"),
+    synced: t("已同步", "Synced"),
+    signedOut: t("本地保存", "Local only"),
+    unavailable: t("云端未配置", "Cloud unavailable"),
+    authError: t("登录失败", "Sign-in failed"),
+    syncError: t("同步失败", "Sync failed")
+  };
+
+  return labels[cloudSyncStatus.code] || labels.signedOut;
+}
+
+function cloudStatusDetail() {
+  if (cloudSyncStatus.detail && (cloudSyncStatus.code === "authError" || cloudSyncStatus.code === "syncError")) {
+    return cloudSyncStatus.detail;
+  }
+
+  const details = {
+    checking: t("正在检查当前浏览器是否已登录。", "Checking whether this browser is signed in."),
+    registering: t("正在创建账号并准备同步。", "Creating the account and preparing sync."),
+    loggingIn: t("正在登录并合并本地资料。", "Signing in and merging local materials."),
+    syncing: t("正在保存课程、资料和生成记录。", "Saving courses, materials, and generated outputs."),
+    pending: t("本次更改会自动保存到云端。", "This change will be saved to the cloud automatically."),
+    synced: t("课程、资料和生成记录已保存。", "Courses, materials, and generated outputs are saved."),
+    signedOut: t("登录后可在不同设备和网址继续使用。", "Sign in to keep working across devices and URLs."),
+    unavailable: t("需要在 Cloudflare 绑定 D1 数据库。", "Bind a Cloudflare D1 database to enable sync."),
+    authError: t("请检查邮箱、密码或云端配置。", "Check the email, password, or cloud configuration."),
+    syncError: t("本地内容仍然保留，请稍后重试。", "Local content is still kept. Try again later.")
+  };
+
+  return details[cloudSyncStatus.code] || details.signedOut;
 }
 
 function courseButton(course, activeId) {
