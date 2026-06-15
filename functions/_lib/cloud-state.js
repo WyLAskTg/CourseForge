@@ -77,7 +77,9 @@ export function getFilesBucket(env = {}) {
 export async function ensureSchema(env) {
   const db = getDb(env);
   if (!db) return null;
-  await db.batch(schemaStatements.map((statement) => db.prepare(statement)));
+  for (const statement of schemaStatements) {
+    await db.prepare(statement).run();
+  }
   return db;
 }
 
@@ -114,7 +116,7 @@ export async function registerUser(env, { email, password }) {
   const now = new Date().toISOString();
   const salt = randomToken(18);
   const passwordHash = await hashPassword(password, salt);
-  const user = { id: crypto.randomUUID(), email: normalizedEmail };
+  const user = { id: newId("user"), email: normalizedEmail };
 
   await db.prepare(
     `INSERT INTO users (id, email, password_hash, password_salt, created_at, updated_at)
@@ -255,7 +257,7 @@ export async function replaceUserState(db, userId, state) {
          color = excluded.color,
          updated_at = excluded.updated_at`
     ).bind(
-      String(course.id || crypto.randomUUID()),
+      String(course.id || newId("course")),
       userId,
       String(course.name || "Untitled course"),
       String(course.audience || "学生"),
@@ -279,7 +281,7 @@ export async function replaceUserState(db, userId, state) {
          storage_key = COALESCE(NULLIF(excluded.storage_key, ''), documents.storage_key),
          updated_at = excluded.updated_at`
     ).bind(
-      String(document.id || crypto.randomUUID()),
+      String(document.id || newId("document")),
       userId,
       String(document.courseId || ""),
       String(document.name || "Untitled material"),
@@ -304,7 +306,7 @@ export async function replaceUserState(db, userId, state) {
          output_json = excluded.output_json,
          updated_at = excluded.updated_at`
     ).bind(
-      String(generation.id || crypto.randomUUID()),
+      String(generation.id || newId("generation")),
       userId,
       String(generation.courseId || ""),
       String(generation.task || ""),
@@ -348,7 +350,7 @@ async function createSessionResponse(db, user) {
 
   await db.prepare(
     "INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?)"
-  ).bind(crypto.randomUUID(), user.id, tokenHash, expires.toISOString(), now.toISOString()).run();
+  ).bind(newId("session"), user.id, tokenHash, expires.toISOString(), now.toISOString()).run();
 
   return {
     user,
@@ -367,14 +369,30 @@ function validatePassword(password) {
 }
 
 async function hashPassword(password, salt) {
+  if (!crypto.subtle?.importKey || !crypto.subtle?.deriveBits) {
+    return hashPasswordFallback(password, salt);
+  }
+
   const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", hash: "SHA-256", salt: encoder.encode(salt), iterations: PASSWORD_ITERATIONS },
-    key,
-    256
-  );
-  return bytesToBase64(new Uint8Array(bits));
+  try {
+    const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+    const bits = await crypto.subtle.deriveBits(
+      { name: "PBKDF2", hash: "SHA-256", salt: encoder.encode(salt), iterations: PASSWORD_ITERATIONS },
+      key,
+      256
+    );
+    return `pbkdf2:${bytesToBase64(new Uint8Array(bits))}`;
+  } catch {
+    return hashPasswordFallback(password, salt);
+  }
+}
+
+async function hashPasswordFallback(password, salt) {
+  let value = `${salt}:${password}`;
+  for (let index = 0; index < 250; index += 1) {
+    value = await sha256(value);
+  }
+  return `sha256:${value}`;
 }
 
 async function sha256(value) {
@@ -404,6 +422,11 @@ function randomToken(byteLength) {
   const bytes = new Uint8Array(byteLength);
   crypto.getRandomValues(bytes);
   return bytesToBase64Url(bytes);
+}
+
+function newId(prefix) {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return `${prefix}_${randomToken(18)}`;
 }
 
 function bytesToHex(bytes) {
