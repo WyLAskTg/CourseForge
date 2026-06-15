@@ -200,7 +200,7 @@ function extractOpenAIOutputText(data) {
 
 export function parseJsonOutput(text) {
   const candidate = extractJsonCandidate(text);
-  const attempts = [candidate, repairLooseJsonBackslashes(candidate)];
+  const attempts = [repairLooseJsonBackslashes(candidate), candidate];
   let lastError = null;
 
   for (const attempt of attempts) {
@@ -230,17 +230,77 @@ function extractJsonCandidate(text) {
 }
 
 function repairLooseJsonBackslashes(value) {
-  const latexCommandPattern = [
+  let output = "";
+  let inString = false;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+
+    if (!inString) {
+      output += character;
+      if (character === "\"") inString = true;
+      continue;
+    }
+
+    if (character === "\"") {
+      output += character;
+      inString = false;
+      continue;
+    }
+
+    if (character === "\\") {
+      const next = value[index + 1] || "";
+      const rest = value.slice(index + 1);
+
+      if (isLikelyLatexEscape(rest)) {
+        output += "\\\\";
+        continue;
+      }
+
+      if (next === "u" && /^[0-9a-fA-F]{4}/.test(value.slice(index + 2, index + 6))) {
+        output += value.slice(index, index + 6);
+        index += 5;
+        continue;
+      }
+
+      if (/["\\/bfnrt]/.test(next)) {
+        output += character + next;
+        index += 1;
+        continue;
+      }
+
+      output += "\\\\";
+      continue;
+    }
+
+    if (character === "\n") {
+      output += "\\n";
+    } else if (character === "\r") {
+      output += "\\r";
+    } else if (character === "\t") {
+      output += "\\t";
+    } else {
+      output += character;
+    }
+  }
+
+  return output;
+}
+
+function isLikelyLatexEscape(rest) {
+  if (/^[()[\]{}|,;:! ]/.test(rest)) return true;
+
+  const latexCommands = [
     "alpha", "beta", "gamma", "delta", "epsilon", "theta", "lambda", "mu", "nu", "pi", "rho", "sigma", "omega",
     "frac", "sqrt", "nabla", "partial", "cdot", "times", "div", "le", "ge", "neq", "infty",
     "left", "right", "begin", "end", "text", "mathbb", "mathbf", "mathcal", "vec", "overline", "underline",
-    "sin", "cos", "tan", "log", "ln", "lim", "sum", "prod", "int", "det", "to", "rightarrow"
-  ].join("|");
+    "sin", "cos", "tan", "log", "ln", "lim", "sum", "prod", "int", "det", "to", "rightarrow",
+    "forall", "exists", "in", "notin", "subset", "subseteq", "cup", "cap", "setminus", "pm", "mp",
+    "approx", "equiv", "cong", "circ", "prime", "cdots", "ldots", "dots", "quad", "qquad",
+    "displaystyle", "bar", "hat", "tilde", "dot", "ddot", "therefore", "because"
+  ];
 
-  return value
-    .replace(new RegExp(`(^|[^\\\\])\\\\(?=(?:${latexCommandPattern})(?![A-Za-z]))`, "g"), "$1\\\\")
-    .replace(/(^|[^\\])\\(?=[()[\]{}|])/g, "$1\\\\")
-    .replace(/(^|[^\\])\\(?!["\\/bfnrtu])/g, "$1\\\\");
+  return latexCommands.some((command) => rest.startsWith(command) && !/[A-Za-z]/.test(rest[command.length] || ""));
 }
 
 function normalizeGeneratedOutput(value, payload) {
