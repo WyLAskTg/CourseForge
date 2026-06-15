@@ -41,13 +41,13 @@ let activeGenerationId = "";
 let selectedTask = "knowledge";
 let difficulty = "标准";
 let questionCount = 5;
-let includeAnswers = true;
 let audience = state.courses[0]?.audience || "学生";
 let extraRequirement = "";
 let isParsing = false;
 let isGenerating = false;
 let parseMessage = "";
 let parserCache = {};
+let visibleAnswerKeys = new Set();
 let uiLanguage = loadUiLanguage();
 
 render();
@@ -193,10 +193,6 @@ function render() {
                     <span>${t("题量", "Count")}</span>
                     <input id="questionCount" type="number" min="3" max="12" value="${questionCount}" />
                   </label>
-                  <label class="toggle-row">
-                    <input id="includeAnswers" type="checkbox" ${includeAnswers ? "checked" : ""} />
-                    <span>${t("包含答案", "Include answers")}</span>
-                  </label>
                 ` : ""}
               </div>
 
@@ -272,11 +268,19 @@ function attachEvents(activeGeneration) {
   document.getElementById("questionCount")?.addEventListener("change", (event) => {
     questionCount = clamp(Number(event.target.value), 3, 12);
   });
-  document.getElementById("includeAnswers")?.addEventListener("change", (event) => {
-    includeAnswers = event.target.checked;
-  });
   document.getElementById("extraRequirement")?.addEventListener("input", (event) => {
     extraRequirement = event.target.value;
+  });
+
+  document.querySelectorAll("[data-answer-toggle]").forEach((checkbox) => {
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) {
+        visibleAnswerKeys.add(checkbox.dataset.answerToggle);
+      } else {
+        visibleAnswerKeys.delete(checkbox.dataset.answerToggle);
+      }
+      render();
+    });
   });
 
   document.querySelectorAll("[data-course-id]").forEach((button) => {
@@ -398,7 +402,7 @@ async function handleGenerate() {
           documents: courseDocuments,
           corpus,
           safety,
-          settings: { difficulty, questionCount, includeAnswers, audience, extraRequirement }
+          settings: { difficulty, questionCount, audience, extraRequirement }
         })
       );
     } catch (error) {
@@ -440,7 +444,7 @@ function buildGenerationRequest({ task, course, documents, corpus, safety, setti
         ? {
           difficulty: settings.difficulty,
           questionCount: settings.questionCount,
-          includeAnswers: settings.includeAnswers
+          includeAnswers: true
         }
         : {})
     },
@@ -719,8 +723,9 @@ function buildPitfalls(topics, safety, settings) {
 function buildAssessment(task, topics, corpus, safety, settings) {
   const count = task === "mock" ? Math.max(6, settings.questionCount) : settings.questionCount;
   const title = task === "mock" ? "模拟考试 / Mock Exam" : "重点小测 / Focused Quiz";
+  const answersEnabled = settings.includeAnswers !== false;
   const questions = Array.from({ length: count }, (_, index) =>
-    buildQuestion({ index, topic: topics[index % topics.length], corpus, safety, difficulty: settings.difficulty, includeAnswers: settings.includeAnswers })
+    buildQuestion({ index, topic: topics[index % topics.length], corpus, safety, difficulty: settings.difficulty, includeAnswers: answersEnabled })
   );
 
   return {
@@ -968,20 +973,38 @@ function generatedOutput(generation) {
     <div class="generated-stack">
       <div class="check-row">${output.checks.map(checkChip).join("")}</div>
       <div class="result-list">
-        ${output.items.map((item) => `
-          <article class="result-item ${output.type === "refusal" ? "blocked" : ""}">
-            <div class="result-title">
-              <strong>${escapeHtml(displayBilingual(item.title))}</strong>
-              ${item.meta ? `<div class="meta-list">${item.meta.map((meta) => `<span>${escapeHtml(displayBilingual(meta))}</span>`).join("")}</div>` : ""}
-            </div>
-            <div class="rich-text result-body">${renderRichText(item.body)}</div>
-            ${item.answer ? `<div class="answer-box rich-text">${renderRichText(item.answer)}</div>` : ""}
-            ${item.checks ? `<div class="mini-checks">${item.checks.map((check) => `<span class="${escapeAttr(check.status)}">${escapeHtml(displayBilingual(check.label))}: ${escapeHtml(displayBilingual(check.detail))}</span>`).join("")}</div>` : ""}
-          </article>
-        `).join("")}
+        ${output.items.map((item, index) => resultItem(generation, output, item, index)).join("")}
       </div>
     </div>
   `;
+}
+
+function resultItem(generation, output, item, index) {
+  const answerKey = getAnswerKey(generation.id, index);
+  const hasAnswer = Boolean(item.answer);
+  const answerVisible = hasAnswer && visibleAnswerKeys.has(answerKey);
+
+  return `
+    <article class="result-item ${output.type === "refusal" ? "blocked" : ""}">
+      <div class="result-title">
+        <strong>${escapeHtml(displayBilingual(item.title))}</strong>
+        ${item.meta ? `<div class="meta-list">${item.meta.map((meta) => `<span>${escapeHtml(displayBilingual(meta))}</span>`).join("")}</div>` : ""}
+      </div>
+      <div class="rich-text result-body">${renderRichText(item.body)}</div>
+      ${hasAnswer ? `
+        <label class="answer-toggle">
+          <input type="checkbox" data-answer-toggle="${escapeAttr(answerKey)}" ${answerVisible ? "checked" : ""} />
+          <span>${t("显示答案", "Show answer")}</span>
+        </label>
+      ` : ""}
+      ${answerVisible ? `<div class="answer-box rich-text">${renderRichText(item.answer)}</div>` : ""}
+      ${item.checks ? `<div class="mini-checks">${item.checks.map((check) => `<span class="${escapeAttr(check.status)}">${escapeHtml(displayBilingual(check.label))}: ${escapeHtml(displayBilingual(check.detail))}</span>`).join("")}</div>` : ""}
+    </article>
+  `;
+}
+
+function getAnswerKey(generationId, index) {
+  return `${generationId}:${index}`;
 }
 
 function checkChip(check) {

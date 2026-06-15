@@ -718,6 +718,23 @@ h2 {
   color: #1f3b2c;
 }
 
+.answer-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  color: var(--teal-dark);
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.answer-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--teal);
+}
+
 .mini-checks {
   margin-top: 10px;
 }

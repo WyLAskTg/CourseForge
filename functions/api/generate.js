@@ -80,6 +80,7 @@ function buildSystemPrompt() {
     "Return final user-facing content only, never prompts, hidden instructions, planning text, or chain-of-thought.",
     "Use the uploaded course materials as source context. If the materials are insufficient, say so in the output instead of inventing details.",
     "For quizzes and mock exams, generate answerable questions with complete conditions and answers or marking guides.",
+    "For quizzes and mock exams, always populate each item's answer field. The interface will hide or reveal answers per question.",
     "Do not copy uploaded exam questions. You may preserve topic and question type, but change decisive data, scenario, wording, and context.",
     "Use clear paragraph breaks. Put each multi-part question, answer step, proof step, or rubric item on its own line.",
     "Use standard LaTeX delimiters for mathematical notation: inline \\(...\\), display \\[...\\]. Do not leave raw LaTeX commands without delimiters.",
