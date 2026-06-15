@@ -699,7 +699,7 @@ function buildGenerationRequest({ task, course, documents, corpus, safety, setti
       "Use clear line breaks for multi-part questions, solutions, and marking guides.",
       "Do not use external image URLs or Markdown image links.",
       "For circuit questions, use only the CourseForge circuit DSL in a fenced circuit block. Do not use ASCII art or placeholder images.",
-      "Circuit DSL examples: size W H; node ID X Y; wire A B; dot A; resistor R1 2ohm A B; lamp L A B; switch S1 A B open; ammeter A A B; battery U_S 12V A B; arrow I A B; ground G.",
+      "Circuit DSL examples: size W H; node ID X Y; wire A B; dot A; resistor R1 2ohm A B; capacitor C1 1nF A B; lamp L A B; switch S1 A B open; ammeter A A B; battery U_S 12V A B; arrow I A B; ground G.",
       "Use standard LaTeX delimiters for math: inline \\(...\\), display \\[...\\]."
     ]
   };
@@ -1513,6 +1513,7 @@ function renderCircuitDiagram(source) {
   for (const item of diagram.items) {
     if (item.type === "wire") parts.push(renderCircuitWire(diagram, item));
     if (item.type === "resistor") parts.push(renderCircuitResistor(diagram, item));
+    if (item.type === "capacitor") parts.push(renderCircuitCapacitor(diagram, item));
     if (item.type === "lamp") parts.push(renderCircuitLamp(diagram, item));
     if (item.type === "switch") parts.push(renderCircuitSwitch(diagram, item));
     if (item.type === "ammeter") parts.push(renderCircuitAmmeter(diagram, item));
@@ -1554,8 +1555,10 @@ function parseCircuitDiagram(source) {
       if (id && Number.isFinite(x) && Number.isFinite(y)) diagram.nodes.set(id, { id, x, y });
     } else if (command === "wire" && tokens.length >= 3) {
       diagram.items.push({ type: "wire", from: tokens[1], to: tokens[2] });
-    } else if (["resistor", "voltage", "current"].includes(command) && tokens.length >= 5) {
+    } else if (["resistor", "capacitor", "voltage", "current"].includes(command) && tokens.length >= 5) {
       diagram.items.push({ type: command, id: tokens[1], value: tokens[2], from: tokens[3], to: tokens[4] });
+    } else if (command === "cap" && tokens.length >= 5) {
+      diagram.items.push({ type: "capacitor", id: tokens[1], value: tokens[2], from: tokens[3], to: tokens[4] });
     } else if (["lamp", "ammeter", "meter"].includes(command) && tokens.length >= 4) {
       diagram.items.push({ type: command === "meter" ? "ammeter" : command, id: tokens[1], from: tokens[2], to: tokens[3] });
     } else if (command === "battery" && tokens.length >= 4) {
@@ -1628,6 +1631,35 @@ function renderCircuitResistor(diagram, item) {
     `<polyline class="circuit-component" points="${points.join(" ")}" />`,
     circuitLine(end, to, "circuit-wire"),
     renderCircuitText(mid.x + normal.x * -30, mid.y + normal.y * -30, circuitComponentLabel(item))
+  ].join("");
+}
+
+function renderCircuitCapacitor(diagram, item) {
+  const geometry = circuitGeometry(diagram, item, 24);
+  if (!geometry) return "";
+
+  const { from, to, unit, normal, mid } = geometry;
+  const plateOffset = 7;
+  const plateHalf = 20;
+  const plateA = { x: mid.x - unit.x * plateOffset, y: mid.y - unit.y * plateOffset };
+  const plateB = { x: mid.x + unit.x * plateOffset, y: mid.y + unit.y * plateOffset };
+  const leadA = { x: plateA.x - unit.x * 2, y: plateA.y - unit.y * 2 };
+  const leadB = { x: plateB.x + unit.x * 2, y: plateB.y + unit.y * 2 };
+
+  return [
+    circuitLine(from, leadA, "circuit-wire"),
+    circuitLine(leadB, to, "circuit-wire"),
+    circuitLine(
+      { x: plateA.x - normal.x * plateHalf, y: plateA.y - normal.y * plateHalf },
+      { x: plateA.x + normal.x * plateHalf, y: plateA.y + normal.y * plateHalf },
+      "circuit-component"
+    ),
+    circuitLine(
+      { x: plateB.x - normal.x * plateHalf, y: plateB.y - normal.y * plateHalf },
+      { x: plateB.x + normal.x * plateHalf, y: plateB.y + normal.y * plateHalf },
+      "circuit-component"
+    ),
+    renderCircuitText(mid.x + normal.x * -38, mid.y + normal.y * -38, circuitComponentLabel(item))
   ].join("");
 }
 
