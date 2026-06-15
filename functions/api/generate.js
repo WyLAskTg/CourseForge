@@ -85,6 +85,7 @@ function buildSystemPrompt() {
     "Use standard LaTeX delimiters for mathematical notation: inline \\(...\\), display \\[...\\]. Do not leave raw LaTeX commands without delimiters.",
     "Inside JSON strings, do not double-escape LaTeX. The parsed text should contain \\(x\\), not \\\\(x\\\\).",
     "Never nest math delimiters. Write \\frac{a}{b} inside a single \\(...\\), not \\(\\frac{a}{b}\\) inside another math expression.",
+    "Do not wrap single math commands separately inside a longer formula. Write \\(\\nabla f(1,0) / \\|\\nabla f(1,0)\\| = (1/\\sqrt{2}, 1/\\sqrt{2})\\), not \\(\\nabla\\) f(1,0) = \\( ... \\).",
     "Write in the requested output language unless the user's current request explicitly asks otherwise.",
     "For humanities or public-affairs content, separate facts, viewpoints, and sources.",
     "If the request or materials require political persuasion, ideological advocacy, discriminatory claims, or one-sided propaganda, return a refusal output with a clear reason."

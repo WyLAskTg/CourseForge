@@ -1086,7 +1086,7 @@ function renderRichBlock(block) {
 }
 
 function renderInlineText(value) {
-  return escapeHtml(normalizeMathForDisplay(normalizeBareLatex(value)))
+  return escapeHtml(normalizeMathForDisplay(value))
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/`([^`]+)`/g, "<code>$1</code>");
 }
@@ -1112,20 +1112,6 @@ function normalizeMathForDisplay(value) {
   return collapseNestedMathDelimiters(value)
     .replace(/\\\(\s*\\\)/g, "")
     .replace(/\\\[\s*\\\]/g, "");
-}
-
-function normalizeBareLatex(value) {
-  return String(value)
-    .split(/(\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]|\$\$[\s\S]*?\$\$|\$[^$\n]+\$)/g)
-    .map((part) => {
-      if (/^(\\\(|\\\[|\$\$|\$)/.test(part)) return part;
-      return part
-        .replace(/(\\left(?:\\.|[^\s])[\s\S]*?\\right(?:\\.|[^\s]))/g, "\\($1\\)")
-        .replace(/(\\langle[\s\S]*?\\rangle)/g, "\\($1\\)")
-        .replace(/\b([A-Za-z][A-Za-z0-9]*(?:_\{[^}]+\}|_[A-Za-z0-9]+|\^\{[^}]+\}|\^[A-Za-z0-9]+)+)/g, "\\($1\\)")
-        .replace(/((?:\\(?:frac|sqrt|sum|prod|int|lim|cup|cap|setminus|mathbb|mathbf|mathrm|mathcal|nabla|partial|langle|rangle|lVert|rVert|Vert|det|sin|cos|tan|ln|log|exp|max|min|in|notin|subseteq|subset|leq|geq|le|ge|neq|equiv|approx|cdot|times|pmod|mid|nmid|rightarrow|Rightarrow|leftarrow|leftrightarrow|land|lor|neg|forall|exists|circ)\b(?:\{[^}]*\}){0,3}|\b[A-Za-z0-9_{}^]+\s*\\(?:cup|cap|setminus|mid|nmid|land|lor|cdot|times|circ)\s*[A-Za-z0-9_{}^]+))/g, "\\($1\\)");
-    })
-    .join("");
 }
 
 function collapseNestedMathDelimiters(value) {
