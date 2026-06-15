@@ -31,21 +31,24 @@ async function handleGenerateRequest({ request, env }) {
 }
 
 export function resolveGenerationProvider(env = {}) {
+  const requestedProvider = String(env.AI_PROVIDER || "deepseek").toLowerCase();
+
+  if (requestedProvider === "openai") {
+    if (!env.OPENAI_API_KEY) return null;
+    return {
+      name: "OpenAI",
+      provider: "openai",
+      apiKey: env.OPENAI_API_KEY,
+      model: env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL
+    };
+  }
+
   if (env.DEEPSEEK_API_KEY) {
     return {
       name: "DeepSeek",
       provider: "deepseek",
       apiKey: env.DEEPSEEK_API_KEY,
       model: env.DEEPSEEK_MODEL || DEFAULT_DEEPSEEK_MODEL
-    };
-  }
-
-  if (env.OPENAI_API_KEY) {
-    return {
-      name: "OpenAI",
-      provider: "openai",
-      apiKey: env.OPENAI_API_KEY,
-      model: env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL
     };
   }
 
