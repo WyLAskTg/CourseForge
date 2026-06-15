@@ -54,7 +54,7 @@ render();
 
 function render() {
   document.documentElement.lang = uiLanguage === "zh" ? "zh-CN" : "en";
-  document.title = t("CourseForge | AI 课程复习助手", "CourseForge | AI Course Review Assistant");
+  document.title = t("CourseForge | 课程复习助手", "CourseForge | Course Review Assistant");
 
   const activeCourse = getActiveCourse();
   const courseDocuments = getCourseDocuments();
