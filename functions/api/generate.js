@@ -153,7 +153,7 @@ function buildSystemPrompt() {
     "Do not copy uploaded exam questions. You may preserve topic and question type, but change decisive data, scenario, wording, and context.",
     "Use clear paragraph breaks. Put each multi-part question, answer step, proof step, or rubric item on its own line.",
     "Use standard LaTeX delimiters for mathematical notation: inline \\(...\\), display \\[...\\]. Do not leave raw LaTeX commands without delimiters.",
-    "Inside JSON strings, do not double-escape LaTeX. The parsed text should contain \\(x\\), not \\\\(x\\\\).",
+    "Because the response is JSON, escape every LaTeX backslash inside string values as \\\\. For example, the JSON source string must contain \\\\(x\\\\), so JSON.parse produces \\(x\\). Never emit raw \\(, \\[, \\frac, or \\nabla inside JSON strings.",
     "Never nest math delimiters. Write \\frac{a}{b} inside a single \\(...\\), not \\(\\frac{a}{b}\\) inside another math expression.",
     "Do not wrap single math commands separately inside a longer formula. Write \\(\\nabla f(1,0) / \\|\\nabla f(1,0)\\| = (1/\\sqrt{2}, 1/\\sqrt{2})\\), not \\(\\nabla\\) f(1,0) = \\( ... \\).",
     "Write in the requested output language unless the user's current request explicitly asks otherwise.",
@@ -198,14 +198,49 @@ function extractOpenAIOutputText(data) {
   return "";
 }
 
-function parseJsonOutput(text) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("AI provider returned text instead of JSON.");
-    return JSON.parse(match[0]);
+export function parseJsonOutput(text) {
+  const candidate = extractJsonCandidate(text);
+  const attempts = [candidate, repairLooseJsonBackslashes(candidate)];
+  let lastError = null;
+
+  for (const attempt of attempts) {
+    try {
+      return JSON.parse(attempt);
+    } catch (error) {
+      lastError = error;
+    }
   }
+
+  throw new Error(`AI provider returned invalid JSON: ${lastError?.message || "parse failed"}`);
+}
+
+function extractJsonCandidate(text) {
+  const trimmed = String(text || "")
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "");
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error("AI provider returned text instead of JSON.");
+  }
+
+  return trimmed.slice(start, end + 1);
+}
+
+function repairLooseJsonBackslashes(value) {
+  const latexCommandPattern = [
+    "alpha", "beta", "gamma", "delta", "epsilon", "theta", "lambda", "mu", "nu", "pi", "rho", "sigma", "omega",
+    "frac", "sqrt", "nabla", "partial", "cdot", "times", "div", "le", "ge", "neq", "infty",
+    "left", "right", "begin", "end", "text", "mathbb", "mathbf", "mathcal", "vec", "overline", "underline",
+    "sin", "cos", "tan", "log", "ln", "lim", "sum", "prod", "int", "det", "to", "rightarrow"
+  ].join("|");
+
+  return value
+    .replace(new RegExp(`(^|[^\\\\])\\\\(?=(?:${latexCommandPattern})(?![A-Za-z]))`, "g"), "$1\\\\")
+    .replace(/(^|[^\\])\\(?=[()[\]{}|])/g, "$1\\\\")
+    .replace(/(^|[^\\])\\(?!["\\/bfnrtu])/g, "$1\\\\");
 }
 
 function normalizeGeneratedOutput(value, payload) {
