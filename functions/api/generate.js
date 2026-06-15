@@ -64,6 +64,28 @@ export async function generateCourseOutput(payload, options) {
 }
 
 async function generateWithDeepSeek(payload, { apiKey, model = DEFAULT_DEEPSEEK_MODEL }) {
+  const output = await requestDeepSeekOutput(payload, { apiKey, model });
+  const qualityIssues = findFinalAnswerQualityIssues(output);
+
+  if (!qualityIssues.length) return output;
+
+  try {
+    return await requestDeepSeekOutput(payload, {
+      apiKey,
+      model,
+      revision: buildRevisionPayload(output, qualityIssues)
+    });
+  } catch {
+    return output;
+  }
+}
+
+async function requestDeepSeekOutput(payload, { apiKey, model, revision }) {
+  const userPayload = buildUserPayload(payload);
+  if (revision) {
+    userPayload.qualityRevision = revision;
+  }
+
   const response = await fetch(DEEPSEEK_CHAT_URL, {
     method: "POST",
     headers: {
@@ -79,7 +101,7 @@ async function generateWithDeepSeek(payload, { apiKey, model = DEFAULT_DEEPSEEK_
         },
         {
           role: "user",
-          content: JSON.stringify(buildUserPayload(payload))
+          content: JSON.stringify(userPayload)
         }
       ],
       response_format: { type: "json_object" },
@@ -147,6 +169,9 @@ function buildSystemPrompt() {
     "You are CourseForge, an education-focused generation engine.",
     "Return only one valid JSON object. Do not wrap it in markdown fences.",
     "Return final user-facing content only, never prompts, hidden instructions, planning text, or chain-of-thought.",
+    "For every item.answer, write the final polished solution/proof only. Do not include exploration, self-correction, hedging, alternative discarded paths, or phrases like maybe, perhaps, however the problem may mean, on second thought, 可能, 也许, 然而题目可能, 更准确地说, 故不一定.",
+    "Before returning JSON, privately verify that each answer has exactly one final conclusion and no contradiction. If a proof question has a false premise or no such object exists, state that final conclusion directly and prove it.",
+    "For math proofs, use a concise final-answer structure such as 结论: ... / 证明: ... or 解: ... . Each step must logically support the final conclusion. Do not narrate trial-and-error reasoning.",
     "Use the uploaded course materials as source context. If the materials are insufficient, say so in the output instead of inventing details.",
     "For quizzes and mock exams, generate answerable questions with complete conditions and answers or marking guides.",
     "For quizzes and mock exams, always populate each item's answer field. The interface will hide or reveal answers per question.",
@@ -175,6 +200,13 @@ function buildUserPayload(payload) {
       text: String(material.text || "").slice(0, 30000)
     })),
     currentRequest: payload.settings?.extraRequirement || "",
+    answerQualityContract: [
+      "Final answers must read like a clean model solution, not internal reasoning.",
+      "Do not show uncertainty, self-debate, or discarded approaches.",
+      "Do not state two incompatible conclusions in the same answer.",
+      "For existence/extreme-value questions, explicitly verify domain, continuity, compactness or the relevant failure before the conclusion.",
+      "If the final answer is negative, present only the negative conclusion and proof; do not first claim the positive conclusion."
+    ],
     outputContract: {
       instruction:
         "Return JSON with title, type, checks, items, and safety. The root may be the output object itself or { output: ... }. items must contain final content in body and answer, not instructions.",
@@ -344,6 +376,73 @@ function normalizeSafety(value, fallback) {
     label: String(value?.label || fallback?.label || "通过 / Clear"),
     reason: String(value?.reason || fallback?.reason || "")
   };
+}
+
+function buildRevisionPayload(previousOutput, qualityIssues) {
+  return {
+    reason: "The previous output looked like exploratory reasoning or contained contradictory conclusions.",
+    detectedIssues: qualityIssues,
+    previousOutput,
+    instruction:
+      "Rewrite the whole output as final user-facing content only. Preserve the same JSON schema and task type. For each item.answer, give one clear final conclusion followed by a rigorous proof or solution. Remove all self-correction, uncertainty, alternative discarded paths, and contradictory statements. Do not mention that this is a rewrite."
+  };
+}
+
+export function findFinalAnswerQualityIssues(output) {
+  const issues = [];
+
+  for (const [index, item] of (output?.items || []).entries()) {
+    const answerText = String(item?.answer || "");
+    const text = answerText || String(item?.body || "");
+    if (!text.trim()) continue;
+
+    const itemIssues = [];
+    if (hasExploratoryReasoning(text)) {
+      itemIssues.push("contains exploratory, hedging, or self-correction language");
+    }
+    if (answerText && hasContradictoryConclusion(answerText)) {
+      itemIssues.push("contains incompatible positive and negative conclusions");
+    }
+
+    if (itemIssues.length) {
+      issues.push({
+        item: index + 1,
+        title: String(item?.title || `Item ${index + 1}`),
+        issues: itemIssues
+      });
+    }
+  }
+
+  return issues;
+}
+
+function hasExploratoryReasoning(text) {
+  const patterns = [
+    /然而题目可能/,
+    /题目可能/,
+    /更准确地说/,
+    /换句话说.*不一定/s,
+    /先.*但.*因此/s,
+    /但是.*故不一定/s,
+    /不过.*不一定/s,
+    /可能(?:没有|存在|设定|是|为)/,
+    /似乎|也许|猜测|自相矛盾|推翻|修正/,
+    /on second thought|however,?\s+the problem may|maybe|perhaps|not necessarily|contradict|revise/i
+  ];
+
+  return patterns.some((pattern) => pattern.test(text));
+}
+
+function hasContradictoryConclusion(text) {
+  const compact = text.replace(/\s+/g, "");
+  const negativeMinimum = /(没有最小值|无最小值|不存在最小值|没有全局最小值|不一定有最小值|nominimum|doesnotexist)/i.test(compact);
+  const negativeMaximum = /(没有最大值|无最大值|不存在最大值|没有全局最大值|不一定有最大值|nomaximum)/i.test(compact);
+  const positiveMinimumText = compact.replace(/没有最小值|无最小值|不存在最小值|没有全局最小值|不一定有最小值|nominimum|doesnotexist/gi, "");
+  const positiveMaximumText = compact.replace(/没有最大值|无最大值|不存在最大值|没有全局最大值|不一定有最大值|nomaximum/gi, "");
+  const positiveMinimum = /(有最小值|存在最小值|取得最小值|hasaminimum|minimumexists)/i.test(positiveMinimumText);
+  const positiveMaximum = /(有最大值|存在最大值|取得最大值|hasamaximum|maximumexists)/i.test(positiveMaximumText);
+
+  return (positiveMinimum && negativeMinimum) || (positiveMaximum && negativeMaximum);
 }
 
 function outputSchema() {
