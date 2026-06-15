@@ -417,6 +417,11 @@ h2 {
   background: var(--teal);
 }
 
+.upload-button.disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
 .primary-action {
   color: white;
   background: var(--blue);

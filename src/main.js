@@ -2,12 +2,10 @@ const STORAGE_KEY = "courseforge-state-v3";
 const LEGACY_STORAGE_KEY = "courseforge-state-v1";
 const UI_LANGUAGE_KEY = "courseforge-ui-language";
 const TEXT_LIMIT = 120000;
+const SEEDED_COURSE_IDS = new Set(["course-foundations", "course-humanities"]);
 
 const defaultState = {
-  courses: [
-    { id: "course-foundations", name: "COMP1010 Final Review", audience: "学生", color: "#0f766e", createdAt: new Date().toISOString() },
-    { id: "course-humanities", name: "History Seminar", audience: "教师", color: "#b45309", createdAt: new Date().toISOString() }
-  ],
+  courses: [],
   documents: [],
   generations: []
 };
@@ -66,6 +64,7 @@ function render() {
   const activeGeneration = state.generations.find((generation) => generation.id === activeGenerationId) || courseGenerations[0];
   const selectedTaskOption = taskOptions.find((option) => option.id === selectedTask) || taskOptions[0];
   const rootElement = document.getElementById("root");
+  const hasCourse = Boolean(activeCourse);
 
   window.MathJax?.typesetClear?.([rootElement]);
   rootElement.innerHTML = `
@@ -94,7 +93,7 @@ function render() {
         </form>
 
         <div class="course-list" aria-label="${t("课程列表", "Course list")}">
-          ${state.courses.map((course) => courseButton(course, activeCourse?.id)).join("")}
+          ${state.courses.length ? state.courses.map((course) => courseButton(course, activeCourse?.id)).join("") : emptyState("folder-plus", t("还没有课程", "No courses yet"), t("先创建一个课程分类", "Create a course category first"), true)}
         </div>
 
         <div class="sidebar-note">
@@ -107,7 +106,7 @@ function render() {
         <header class="topbar">
           <div>
             <p class="eyebrow">${t("课程工作台", "Course Workspace")}</p>
-            <h1>${escapeHtml(activeCourse?.name || "新课程")}</h1>
+            <h1>${escapeHtml(activeCourse?.name || t("创建你的第一门课程", "Create your first course"))}</h1>
           </div>
           <div class="header-actions">
             <label class="language-control">
@@ -145,15 +144,15 @@ function render() {
                   <p class="eyebrow">${t("资料库", "Library")}</p>
                   <h2>${t("课程资料", "Course Materials")}</h2>
                 </div>
-                <label class="upload-button">
+                <label class="upload-button ${hasCourse ? "" : "disabled"}">
                   ${icon(isParsing ? "loader-2" : "upload", isParsing ? "spin" : "")}
                   <span>${isParsing ? t("解析中", "Parsing") : t("上传", "Upload")}</span>
-                  <input id="fileInput" type="file" accept=".pdf,.doc,.docx,.txt" multiple />
+                  <input id="fileInput" type="file" accept=".pdf,.doc,.docx,.txt" multiple ${hasCourse ? "" : "disabled"} />
                 </label>
               </div>
               ${parseMessage ? `<p class="parse-message">${escapeHtml(displayBilingual(parseMessage))}</p>` : ""}
               <div class="document-list">
-                ${courseDocuments.length ? courseDocuments.map(documentRow).join("") : emptyState("library-big", t("暂无资料", "No materials yet"), "PDF / DOCX / TXT", false)}
+                ${hasCourse ? (courseDocuments.length ? courseDocuments.map(documentRow).join("") : emptyState("library-big", t("暂无资料", "No materials yet"), "PDF / DOCX / TXT", false)) : emptyState("folder-plus", t("请先创建课程", "Create a course first"), t("课程会用来保存资料和生成记录", "Courses keep materials and generation history organized"), false)}
               </div>
             </section>
 
@@ -163,7 +162,7 @@ function render() {
                   <p class="eyebrow">${t("生成配置", "Generation Setup")}</p>
                   <h2>${bi(selectedTaskOption.label, selectedTaskOption.enLabel)}</h2>
                 </div>
-                <button class="primary-action" id="generateBtn" type="button" ${isGenerating ? "disabled" : ""}>
+                <button class="primary-action" id="generateBtn" type="button" ${isGenerating || !hasCourse ? "disabled" : ""}>
                   ${icon(isGenerating ? "loader-2" : "sparkles", isGenerating ? "spin" : "")}<span>${isGenerating ? t("生成中", "Generating") : t("生成", "Generate")}</span>
                 </button>
               </div>
@@ -879,8 +878,8 @@ function loadState() {
 }
 
 function normalizeState(value) {
-  const normalized = {
-    courses: Array.isArray(value?.courses) && value.courses.length ? value.courses : defaultState.courses,
+  let normalized = {
+    courses: Array.isArray(value?.courses) ? value.courses : defaultState.courses,
     documents: Array.isArray(value?.documents) ? value.documents : [],
     generations: Array.isArray(value?.generations) ? value.generations : []
   };
@@ -893,7 +892,21 @@ function normalizeState(value) {
     createdAt: course.createdAt || new Date().toISOString()
   }));
 
+  normalized = removeUnusedSeedCourses(normalized);
+
   return normalized;
+}
+
+function removeUnusedSeedCourses(value) {
+  const usedCourseIds = new Set([
+    ...value.documents.map((document) => document.courseId),
+    ...value.generations.map((generation) => generation.courseId)
+  ]);
+
+  return {
+    ...value,
+    courses: value.courses.filter((course) => !SEEDED_COURSE_IDS.has(course.id) || usedCourseIds.has(course.id))
+  };
 }
 
 function courseButton(course, activeId) {
