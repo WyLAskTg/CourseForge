@@ -1442,10 +1442,59 @@ function renderRichText(value = "") {
   const text = prettifyGeneratedText(value);
   if (!text.trim()) return "";
 
-  return text
-    .split(/\n{2,}/)
-    .map((block) => renderRichBlock(block))
-    .join("");
+  return renderMixedRichText(text);
+}
+
+function renderMixedRichText(text) {
+  const lines = text.split("\n");
+  let html = "";
+  let textBuffer = [];
+  let codeBuffer = [];
+  let codeLanguage = "";
+  let inCodeBlock = false;
+
+  const flushText = () => {
+    const blockText = textBuffer.join("\n").trim();
+    if (blockText) {
+      html += blockText
+        .split(/\n{2,}/)
+        .map((block) => renderRichBlock(block))
+        .join("");
+    }
+    textBuffer = [];
+  };
+
+  const flushCode = () => {
+    const code = codeBuffer.join("\n").replace(/\n+$/g, "");
+    html += `<pre class="code-block"${codeLanguage ? ` data-language="${escapeAttr(codeLanguage)}"` : ""}><code>${escapeHtml(code)}</code></pre>`;
+    codeBuffer = [];
+    codeLanguage = "";
+  };
+
+  for (const line of lines) {
+    const fence = line.trim().match(/^```([\w#+.-]*)\s*$/);
+    if (fence) {
+      if (inCodeBlock) {
+        flushCode();
+        inCodeBlock = false;
+      } else {
+        flushText();
+        inCodeBlock = true;
+        codeLanguage = fence[1] || "";
+      }
+      continue;
+    }
+
+    if (inCodeBlock) {
+      codeBuffer.push(line);
+    } else {
+      textBuffer.push(line);
+    }
+  }
+
+  if (inCodeBlock) flushCode();
+  flushText();
+  return html;
 }
 
 function renderRichBlock(block) {
