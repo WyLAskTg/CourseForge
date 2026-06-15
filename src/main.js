@@ -306,10 +306,22 @@ function attachEvents(activeGeneration) {
     });
   });
 
+  document.querySelectorAll("[data-delete-course]").forEach((button) => {
+    button.addEventListener("click", () => {
+      deleteCourse(button.dataset.deleteCourse);
+    });
+  });
+
   document.querySelectorAll("[data-generation-id]").forEach((button) => {
     button.addEventListener("click", () => {
       activeGenerationId = button.dataset.generationId;
       render();
+    });
+  });
+
+  document.querySelectorAll("[data-delete-generation]").forEach((button) => {
+    button.addEventListener("click", () => {
+      deleteGeneration(button.dataset.deleteGeneration);
     });
   });
 }
@@ -332,6 +344,54 @@ function handleCreateCourse(event) {
   activeCourseId = nextCourse.id;
   activeGenerationId = "";
   input.value = "";
+  render();
+}
+
+function deleteCourse(courseId) {
+  const course = state.courses.find((item) => item.id === courseId);
+  if (!course) return;
+
+  const confirmed = window.confirm(
+    t("删除此课程会同时删除该课程的资料和生成记录。确定删除吗？", "Deleting this course will also remove its materials and generation history. Continue?")
+  );
+  if (!confirmed) return;
+
+  const nextCourses = state.courses.filter((item) => item.id !== courseId);
+  const nextDocuments = state.documents.filter((document) => document.courseId !== courseId);
+  const nextGenerations = state.generations.filter((generation) => generation.courseId !== courseId);
+  const retainedActiveCourse = activeCourseId === courseId ? null : nextCourses.find((item) => item.id === activeCourseId);
+  const nextActiveCourse = retainedActiveCourse || nextCourses[0];
+
+  persist({
+    ...state,
+    courses: nextCourses,
+    documents: nextDocuments,
+    generations: nextGenerations
+  });
+
+  activeCourseId = nextActiveCourse?.id || "";
+  activeGenerationId = "";
+  audience = nextActiveCourse?.audience || "学生";
+  visibleAnswerKeys = new Set(
+    Array.from(visibleAnswerKeys).filter((key) => nextGenerations.some((generation) => key.startsWith(`${generation.id}:`)))
+  );
+  render();
+}
+
+function deleteGeneration(generationId) {
+  const generation = state.generations.find((item) => item.id === generationId);
+  if (!generation) return;
+
+  const confirmed = window.confirm(t("删除这条生成记录？", "Delete this generated output?"));
+  if (!confirmed) return;
+
+  const nextGenerations = state.generations.filter((item) => item.id !== generationId);
+  persist({ ...state, generations: nextGenerations });
+
+  if (activeGenerationId === generationId) {
+    activeGenerationId = "";
+  }
+  visibleAnswerKeys = new Set(Array.from(visibleAnswerKeys).filter((key) => !key.startsWith(`${generationId}:`)));
   render();
 }
 
@@ -931,14 +991,19 @@ function removeUnusedSeedCourses(value) {
 function courseButton(course, activeId) {
   const docCount = state.documents.filter((document) => document.courseId === course.id).length;
   return `
-    <button class="course-item ${course.id === activeId ? "active" : ""}" data-course-id="${escapeAttr(course.id)}" type="button">
-      <span class="course-color" style="background-color: ${escapeAttr(course.color)}"></span>
-      <span>
-        <strong>${escapeHtml(course.name)}</strong>
-        <small>${escapeHtml(roleLabel(course.audience))} · ${t(`${docCount} 份资料`, `${docCount} material(s)`)}</small>
-      </span>
-      ${icon("chevron-right")}
-    </button>
+    <article class="course-entry ${course.id === activeId ? "active" : ""}">
+      <button class="course-item" data-course-id="${escapeAttr(course.id)}" type="button">
+        <span class="course-color" style="background-color: ${escapeAttr(course.color)}"></span>
+        <span>
+          <strong>${escapeHtml(course.name)}</strong>
+          <small>${escapeHtml(roleLabel(course.audience))} · ${t(`${docCount} 份资料`, `${docCount} material(s)`)}</small>
+        </span>
+        ${icon("chevron-right")}
+      </button>
+      <button class="icon-button quiet" type="button" data-delete-course="${escapeAttr(course.id)}" aria-label="${t("删除课程", "Delete course")}">
+        ${icon("trash-2")}
+      </button>
+    </article>
   `;
 }
 
@@ -1018,10 +1083,15 @@ function checkChip(check) {
 
 function historyItem(generation, activeId) {
   return `
-    <button class="history-item ${generation.id === activeId ? "active" : ""}" type="button" data-generation-id="${escapeAttr(generation.id)}">
-      <span>${escapeHtml(displayBilingual(generation.title))}</span>
-      <small>${formatDate(generation.createdAt)}</small>
-    </button>
+    <article class="history-entry ${generation.id === activeId ? "active" : ""}">
+      <button class="history-item" type="button" data-generation-id="${escapeAttr(generation.id)}">
+        <span>${escapeHtml(displayBilingual(generation.title))}</span>
+        <small>${formatDate(generation.createdAt)}</small>
+      </button>
+      <button class="icon-button quiet" type="button" data-delete-generation="${escapeAttr(generation.id)}" aria-label="${t("删除生成记录", "Delete generated output")}">
+        ${icon("trash-2")}
+      </button>
+    </article>
   `;
 }
 

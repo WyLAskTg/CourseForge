@@ -242,6 +242,15 @@ textarea:focus {
   margin-top: 18px;
 }
 
+.course-entry,
+.history-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 4px;
+  border-radius: 8px;
+}
+
 .course-item,
 .history-item {
   display: grid;
@@ -260,9 +269,14 @@ textarea:focus {
   padding: 10px;
 }
 
-.course-item.active,
-.history-item.active {
+.course-entry.active,
+.history-entry.active {
   background: var(--surface-strong);
+}
+
+.course-entry .icon-button,
+.history-entry .icon-button {
+  justify-self: end;
 }
 
 .course-color {
@@ -772,10 +786,17 @@ h2 {
   font-size: 22px;
 }
 
-.history-item {
-  padding: 10px 12px;
+.history-entry {
   border: 1px solid var(--line);
   background: white;
+}
+
+.history-entry.active {
+  background: var(--surface-strong);
+}
+
+.history-item {
+  padding: 10px 0 10px 12px;
 }
 
 .policy-box {
