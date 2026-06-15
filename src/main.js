@@ -1880,12 +1880,12 @@ function circuitLabelCandidates(geometry, text, options = {}) {
   const { mid, unit, normal } = geometry;
   const mostlyVertical = Math.abs(unit.y) > Math.abs(unit.x);
   const textAwareDistance = mostlyVertical
-    ? Math.min(92, estimateCircuitTextWidth(text) / 2 + 28)
-    : 36;
+    ? Math.min(128, estimateCircuitTextWidth(text) / 2 + 42)
+    : 48;
   const baseDistance = Math.max(options.distance || 0, textAwareDistance);
   const preferredSide = options.preferredSide || -1;
   const sideOrder = [preferredSide, -preferredSide];
-  const distances = [baseDistance, baseDistance + 18, baseDistance + 34, baseDistance + 52];
+  const distances = [baseDistance, baseDistance + 22, baseDistance + 42, baseDistance + 64];
   const alongOffsets = [0, -26, 26, -48, 48, -70, 70];
   const candidates = [];
 

@@ -900,24 +900,24 @@ h2 {
   fill: #111827;
   stroke: #ffffff;
   stroke-linejoin: round;
-  stroke-width: 5px;
+  stroke-width: 4px;
   paint-order: stroke fill;
   font-family: Georgia, "Times New Roman", "Microsoft YaHei", serif;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 800;
 }
 
 .circuit-title {
-  font-size: 18px;
+  font-size: 15px;
 }
 
 .circuit-polarity {
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 900;
 }
 
 .circuit-meter-label {
-  font-size: 18px;
+  font-size: 14px;
   font-style: normal;
   stroke-width: 3px;
 }
