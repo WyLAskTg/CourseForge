@@ -81,15 +81,17 @@ function render() {
 
         <form class="course-form" id="courseForm">
           <div class="form-title">
-            <label for="courseName">${bi("课程分类", "Course category")}</label>
+            <label for="courseName">${bi("课程名称", "Course name")}</label>
             <select id="courseAudience" aria-label="课程身份">
               ${option("学生", audience, t("学生", "Student"))}
               ${option("教师", audience, t("教师", "Teacher"))}
             </select>
           </div>
           <div class="input-row">
-            <input id="courseName" placeholder="${t("新增课程或班级", "New course or class")}" />
-            <button class="icon-button" type="submit" aria-label="${t("新增课程", "Add course")}">${icon("folder-plus")}</button>
+            <input id="courseName" placeholder="${t("例如 MATH237", "Example: MATH237")}" />
+            <button class="create-course-button" type="submit" aria-label="${t("创建课程", "Create course")}">
+              ${icon("folder-plus")}<span>${t("创建", "Create")}</span>
+            </button>
           </div>
         </form>
 
@@ -247,6 +249,9 @@ function render() {
 
 function attachEvents(activeGeneration) {
   document.getElementById("courseForm")?.addEventListener("submit", handleCreateCourse);
+  document.getElementById("courseName")?.addEventListener("input", (event) => {
+    event.target.classList.remove("needs-value");
+  });
   document.getElementById("languageSelect")?.addEventListener("change", (event) => {
     uiLanguage = event.target.value === "en" ? "en" : "zh";
     localStorage.setItem(UI_LANGUAGE_KEY, uiLanguage);
@@ -330,7 +335,12 @@ function handleCreateCourse(event) {
   event.preventDefault();
   const input = document.getElementById("courseName");
   const name = input.value.trim();
-  if (!name) return;
+  if (!name) {
+    input.classList.add("needs-value");
+    input.placeholder = t("请先输入课程名称", "Enter a course name first");
+    input.focus();
+    return;
+  }
 
   const nextCourse = {
     id: crypto.randomUUID(),

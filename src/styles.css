@@ -169,7 +169,7 @@ button:disabled {
 
 .input-row {
   display: grid;
-  grid-template-columns: 1fr 42px;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
 }
 
@@ -205,6 +205,7 @@ textarea:focus {
 }
 
 .icon-button,
+.create-course-button,
 .upload-button,
 .primary-action,
 .secondary-action,
@@ -220,6 +221,30 @@ textarea:focus {
 .icon-button {
   color: white;
   background: var(--teal);
+}
+
+.create-course-button {
+  min-width: 76px;
+  height: 42px;
+  padding: 0 12px;
+  color: white;
+  background: var(--teal);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.create-course-button:hover {
+  background: var(--teal-dark);
+}
+
+input.needs-value {
+  border-color: rgba(190, 18, 60, 0.55);
+  background: #fff8fa;
+  box-shadow: 0 0 0 3px rgba(190, 18, 60, 0.1);
+}
+
+input.needs-value::placeholder {
+  color: var(--red);
 }
 
 .icon-button.quiet {
