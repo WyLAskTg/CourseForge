@@ -133,10 +133,7 @@ function render() {
             <button class="secondary-action" id="downloadResultBtn" type="button" ${activeGeneration ? "" : "disabled"}>
               ${icon("download")}<span>${t("导出", "Export")}</span>
             </button>
-            <div class="safety-pill ${safety.level}">
-              ${icon(safety.level === "blocked" ? "triangle-alert" : "shield-check")}
-              <span>${escapeHtml(displayBilingual(safety.label))}</span>
-            </div>
+            ${blockedBadge(safety)}
           </div>
         </header>
 
@@ -212,7 +209,7 @@ function render() {
                 <p class="eyebrow">${t("生成结果", "Output")}</p>
                 <h2>${escapeHtml(displayBilingual(activeGeneration?.title || t("等待生成", "Waiting")))}</h2>
               </div>
-              ${statusBadge(activeGeneration?.output?.safety?.level || safety.level, activeGeneration?.output?.safety?.label || safety.label)}
+              ${blockedBadge(activeGeneration?.output?.safety || safety)}
             </div>
             ${activeGeneration ? generatedOutput(activeGeneration) : emptyState("sparkles", t("暂无结果", "No output yet"), "Key points / Pitfalls / Quiz / Mock exam", false)}
           </section>
@@ -871,7 +868,7 @@ async function loadPdfJs() {
 function analyzeSafety(text) {
   const content = text || "";
   const blockingHit = BLOCKING_PATTERNS.find((item) => item.regex.test(content));
-  if (blockingHit) return { level: "blocked", label: "无法生成 / Blocked", reason: `${blockingHit.reason} / Contains prohibited persuasive, discriminatory, or harmful content` };
+  if (blockingHit) return { level: "blocked", label: "不通过 / Not Passed", reason: `${blockingHit.reason} / Contains prohibited persuasive, discriminatory, or harmful content` };
 
   const hasSensitiveContext = SENSITIVE_CONTEXT_PATTERNS.some((regex) => regex.test(content));
   if (hasSensitiveContext) return { level: "sensitive", label: "中立审查 / Neutral Review", reason: "涉及政治、历史、宗教、民族或公共议题 / Sensitive public or humanities topic" };
@@ -1290,14 +1287,15 @@ function courseButton(course, activeId) {
 }
 
 function documentRow(document) {
+  const isBlocked = document.safety?.level === "blocked";
   return `
-    <article class="document-row">
+    <article class="document-row ${isBlocked ? "" : "no-status"}">
       <div class="file-icon">${icon("file-text")}</div>
       <div>
         <strong>${escapeHtml(document.name)}</strong>
         <span>${escapeHtml(displayBilingual(document.type))} · ${formatBytes(document.size)}</span>
       </div>
-      ${statusBadge(document.safety?.level || "clear", document.safety?.label || t("通过", "Clear"))}
+      ${blockedBadge(document.safety)}
       <button class="icon-button quiet" type="button" data-delete-doc="${escapeAttr(document.id)}" aria-label="${t("删除资料", "Delete material")}">
         ${icon("trash-2")}
       </button>
@@ -1318,7 +1316,6 @@ function generatedOutput(generation) {
   const output = generation.output;
   return `
     <div class="generated-stack">
-      <div class="check-row">${output.checks.map(checkChip).join("")}</div>
       <div class="result-list">
         ${output.items.map((item, index) => resultItem(generation, output, item, index)).join("")}
       </div>
@@ -1335,7 +1332,6 @@ function resultItem(generation, output, item, index) {
     <article class="result-item ${output.type === "refusal" ? "blocked" : ""}">
       <div class="result-title">
         <strong>${escapeHtml(displayBilingual(item.title))}</strong>
-        ${item.meta ? `<div class="meta-list">${item.meta.map((meta) => `<span>${escapeHtml(displayBilingual(meta))}</span>`).join("")}</div>` : ""}
       </div>
       <div class="rich-text result-body">${renderRichText(item.body)}</div>
       ${hasAnswer ? `
@@ -1353,16 +1349,6 @@ function getAnswerKey(generationId, index) {
   return `${generationId}:${index}`;
 }
 
-function checkChip(check) {
-  return `
-    <div class="check-chip ${escapeAttr(check.status)}">
-      ${icon(check.status === "pass" ? "circle-check" : "triangle-alert")}
-      <span>${escapeHtml(displayBilingual(check.label))}</span>
-      <small>${escapeHtml(displayBilingual(check.detail))}</small>
-    </div>
-  `;
-}
-
 function historyItem(generation, activeId) {
   return `
     <article class="history-entry ${generation.id === activeId ? "active" : ""}">
@@ -1377,11 +1363,13 @@ function historyItem(generation, activeId) {
   `;
 }
 
-function statusBadge(status, label) {
+function blockedBadge(safety) {
+  if (safety?.level !== "blocked") return "";
+
   return `
-    <span class="status-badge ${escapeAttr(status)}">
-      ${icon(status === "blocked" ? "triangle-alert" : "shield-check")}
-      ${escapeHtml(displayBilingual(label))}
+    <span class="status-badge blocked">
+      ${icon("triangle-alert")}
+      ${escapeHtml(displayBilingual(safety.label || t("不通过", "Not Passed")))}
     </span>
   `;
 }
