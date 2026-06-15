@@ -1,5 +1,5 @@
 # CourseForge
 
-CourseForge is a web app for students and teachers to organize course materials and generate study outputs such as key points, common pitfalls, focused quizzes, and mock exams.
+一个支持上传课程资料生成复习备考内容/习题的web app
 
-It supports course-based libraries, document upload, generation history, and exportable review materials.
+A web app that lets you upload course materials to create review and practice content/questions
