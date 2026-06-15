@@ -107,9 +107,9 @@ function render() {
           ${state.courses.length ? state.courses.map((course) => courseButton(course, activeCourse?.id)).join("") : emptyState("folder-plus", t("还没有课程", "No courses yet"), t("先创建一个课程分类", "Create a course category first"), true)}
         </div>
 
-        <div class="sidebar-note">
-          <strong>${t("资料边界", "Source boundary")}</strong>
-          <span>${t("生成内容仅使用当前课程资料与本次要求。", "Generated content uses only this course library and the current request.")}</span>
+        <div class="sidebar-stats" aria-label="${t("课程状态", "Course status")}">
+          ${sidebarStat("file-text", t("资料", "Materials"), courseDocuments.length, t("当前课程", "Current course"))}
+          ${sidebarStat("sparkles", t("生成", "Outputs"), courseGenerations.length, t("历史记录", "History"))}
         </div>
       </aside>
 
@@ -139,13 +139,6 @@ function render() {
             </div>
           </div>
         </header>
-
-        <section class="summary-strip" aria-label="课程状态">
-          ${summaryCard("file-text", t("资料", "Materials"), courseDocuments.length, t("当前课程", "Current course"))}
-          ${summaryCard("sparkles", t("生成", "Outputs"), courseGenerations.length, t("历史记录", "History"))}
-          ${summaryCard("shield-check", t("审核", "Review"), displayBilingual(safety.label), displayBilingual(safety.reason))}
-          ${summaryCard("upload", t("格式", "Formats"), "PDF / DOCX / TXT", t("DOC 需后端转换", "DOC needs backend conversion"))}
-        </section>
 
         <section class="main-grid">
           <div class="left-column">
@@ -237,14 +230,6 @@ function render() {
         </div>
         <div class="history-list">
           ${courseGenerations.length ? courseGenerations.map((generation) => historyItem(generation, activeGeneration?.id)).join("") : emptyState("history", t("没有历史记录", "No history"), t("自动保存在当前课程", "Saved to this course"), true)}
-        </div>
-        <div class="policy-box">
-          <div>${icon("shield-check")}<strong>${t("生成门槛", "Generation Rules")}</strong></div>
-          <ul>
-            <li>${t("题干语境、数据、案例不复用原资料", "Context, data, and cases are not reused")}</li>
-            <li>${t("题目条件完整，答案可由题干推出", "Questions must be logically answerable")}</li>
-            <li>${t("文史政内容保持事实、观点、来源分离", "Humanities topics separate facts, views, and sources")}</li>
-          </ul>
         </div>
       </aside>
     </div>
@@ -1401,9 +1386,9 @@ function statusBadge(status, label) {
   `;
 }
 
-function summaryCard(iconName, label, value, detail) {
+function sidebarStat(iconName, label, value, detail) {
   return `
-    <article class="summary-card">
+    <article class="sidebar-stat">
       <div>${icon(iconName)}</div>
       <span>${escapeHtml(label)}</span>
       <strong>${escapeHtml(value)}</strong>
