@@ -697,6 +697,8 @@ function buildGenerationRequest({ task, course, documents, corpus, safety, setti
       "For quizzes and mock exams, every question must be answerable from the question conditions and course context.",
       "Do not reuse decisive data, cases, wording, or contexts from uploaded exams.",
       "Use clear line breaks for multi-part questions, solutions, and marking guides.",
+      "Do not use external image URLs or Markdown image links. Put diagrams directly in the question text.",
+      "For circuit questions, use a fenced code block labeled circuit and draw the circuit as readable ASCII with all component labels and values.",
       "Use standard LaTeX delimiters for math: inline \\(...\\), display \\[...\\]."
     ]
   };
@@ -1489,6 +1491,12 @@ function renderRichBlock(block) {
   const lines = block.split("\n").map((line) => line.trim()).filter(Boolean);
   if (!lines.length) return "";
 
+  if (lines.some(isMarkdownImageLine)) {
+    return lines
+      .map((line) => (isMarkdownImageLine(line) ? renderMarkdownImage(line) : `<p>${renderInlineText(line)}</p>`))
+      .join("");
+  }
+
   if (lines.length > 1 && lines.every((line) => isListLine(line))) {
     return `<ul>${lines.map((line) => `<li>${renderInlineText(listItemText(line))}</li>`).join("")}</ul>`;
   }
@@ -1500,6 +1508,65 @@ function renderInlineText(value) {
   return escapeHtml(normalizeMathForDisplay(value))
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/`([^`]+)`/g, "<code>$1</code>");
+}
+
+function isMarkdownImageLine(value) {
+  return Boolean(parseMarkdownImage(value));
+}
+
+function parseMarkdownImage(value) {
+  return String(value || "").trim().match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+}
+
+function renderMarkdownImage(value) {
+  const match = parseMarkdownImage(value);
+  if (!match) return "";
+
+  const alt = match[1] || t("图示", "Diagram");
+  const source = match[2] || "";
+  if (isEmbeddedImageSource(source)) {
+    return `
+      <figure class="inline-image">
+        <img src="${escapeAttr(source)}" alt="${escapeAttr(alt)}" loading="lazy" />
+        <figcaption>${escapeHtml(alt)}</figcaption>
+      </figure>
+    `;
+  }
+
+  return `
+    <figure class="inline-diagram-note">
+      <div>${icon("image-off")}</div>
+      <figcaption>
+        <strong>${escapeHtml(alt)}</strong>
+        <span>${escapeHtml(diagramFallbackText(source))}</span>
+      </figcaption>
+    </figure>
+  `;
+}
+
+function isEmbeddedImageSource(source) {
+  try {
+    const url = new URL(source, window.location.origin);
+    return url.protocol === "data:" || url.origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+function diagramFallbackText(source) {
+  const label = extractImageTextLabel(source);
+  return label
+    ? t(`外部图片链接已隐藏：${label}。请重新生成以获得题干内嵌图示。`, `External image link hidden: ${label}. Regenerate to embed the diagram in the question.`)
+    : t("外部图片链接已隐藏。请重新生成以获得题干内嵌图示。", "External image link hidden. Regenerate to embed the diagram in the question.");
+}
+
+function extractImageTextLabel(source) {
+  try {
+    const url = new URL(source, window.location.origin);
+    return decodeURIComponent(url.searchParams.get("text") || "").replace(/\+/g, " ").trim();
+  } catch {
+    return "";
+  }
 }
 
 function prettifyGeneratedText(value) {

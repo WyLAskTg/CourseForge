@@ -835,6 +835,67 @@ h2 {
   font: inherit;
 }
 
+.inline-image,
+.inline-diagram-note {
+  margin: 12px 0 0;
+  border-radius: 8px;
+}
+
+.inline-image {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: #f8fafc;
+}
+
+.inline-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+.inline-image figcaption {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.inline-diagram-note {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px dashed #cfd8e3;
+  background: #f8fafc;
+}
+
+.inline-diagram-note div {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  color: var(--muted);
+  background: #eef2f7;
+}
+
+.inline-diagram-note figcaption {
+  display: grid;
+  gap: 2px;
+}
+
+.inline-diagram-note strong {
+  color: var(--text);
+}
+
+.inline-diagram-note span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .rich-text mjx-container {
   max-width: 100%;
   overflow-x: auto;
