@@ -835,6 +835,97 @@ h2 {
   font: inherit;
 }
 
+.circuit-render {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 12px 0 0;
+  padding: 14px;
+  border: 1px solid #d7dde6;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.circuit-render svg {
+  display: block;
+  min-width: 560px;
+  width: 100%;
+  height: auto;
+}
+
+.circuit-wire,
+.circuit-component,
+.circuit-source,
+.circuit-symbol,
+.circuit-contact,
+.circuit-ground-line {
+  fill: none;
+  stroke: #111827;
+  stroke-width: 2.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.circuit-component {
+  stroke-width: 2.1;
+}
+
+.circuit-source,
+.circuit-symbol,
+.circuit-contact {
+  fill: #ffffff;
+}
+
+.circuit-node {
+  fill: #111827;
+  stroke: none;
+}
+
+.circuit-arrow-line {
+  fill: none;
+  stroke: #111827;
+  stroke-width: 2.1;
+  stroke-linecap: round;
+  marker-end: url("#circuit-arrow");
+}
+
+.circuit-render marker path {
+  fill: #111827;
+}
+
+.circuit-label,
+.circuit-title,
+.circuit-polarity,
+.circuit-meter-label {
+  fill: #111827;
+  font-family: Georgia, "Times New Roman", "Microsoft YaHei", serif;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.circuit-title {
+  font-size: 18px;
+}
+
+.circuit-polarity {
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.circuit-meter-label {
+  font-size: 18px;
+  font-style: normal;
+}
+
+.circuit-symbol-name {
+  font-style: italic;
+}
+
+.circuit-subscript {
+  baseline-shift: -18%;
+  font-size: 100%;
+}
+
 .inline-image,
 .inline-diagram-note {
   margin: 12px 0 0;

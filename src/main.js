@@ -697,8 +697,9 @@ function buildGenerationRequest({ task, course, documents, corpus, safety, setti
       "For quizzes and mock exams, every question must be answerable from the question conditions and course context.",
       "Do not reuse decisive data, cases, wording, or contexts from uploaded exams.",
       "Use clear line breaks for multi-part questions, solutions, and marking guides.",
-      "Do not use external image URLs or Markdown image links. Put diagrams directly in the question text.",
-      "For circuit questions, use a fenced code block labeled circuit and draw the circuit as readable ASCII with all component labels and values.",
+      "Do not use external image URLs or Markdown image links.",
+      "For circuit questions, use only the CourseForge circuit DSL in a fenced circuit block. Do not use ASCII art or placeholder images.",
+      "Circuit DSL examples: size W H; node ID X Y; wire A B; dot A; resistor R1 2ohm A B; lamp L A B; switch S1 A B open; ammeter A A B; battery U_S 12V A B; arrow I A B; ground G.",
       "Use standard LaTeX delimiters for math: inline \\(...\\), display \\[...\\]."
     ]
   };
@@ -1456,7 +1457,7 @@ function renderMixedRichText(text) {
 
   const flushCode = () => {
     const code = codeBuffer.join("\n").replace(/\n+$/g, "");
-    html += `<pre class="code-block"${codeLanguage ? ` data-language="${escapeAttr(codeLanguage)}"` : ""}><code>${escapeHtml(code)}</code></pre>`;
+    html += renderCodeBlock(code, codeLanguage);
     codeBuffer = [];
     codeLanguage = "";
   };
@@ -1485,6 +1486,429 @@ function renderMixedRichText(text) {
   if (inCodeBlock) flushCode();
   flushText();
   return html;
+}
+
+function renderCodeBlock(code, language = "") {
+  if (isCircuitDiagramLanguage(language)) {
+    const diagram = renderCircuitDiagram(code);
+    if (diagram) return diagram;
+  }
+
+  return `<pre class="code-block"${language ? ` data-language="${escapeAttr(language)}"` : ""}><code>${escapeHtml(code)}</code></pre>`;
+}
+
+function isCircuitDiagramLanguage(language) {
+  return ["circuit", "circuit-svg"].includes(String(language || "").trim().toLowerCase());
+}
+
+function renderCircuitDiagram(source) {
+  const diagram = parseCircuitDiagram(source);
+  if (!diagram) return "";
+
+  const parts = [
+    `<svg viewBox="0 0 ${diagram.width} ${diagram.height}" role="img" aria-label="${escapeAttr(t("电路图", "Circuit diagram"))}">`,
+    `<defs><marker id="circuit-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M 0 0 L 8 4 L 0 8 z" /></marker></defs>`
+  ];
+
+  for (const item of diagram.items) {
+    if (item.type === "wire") parts.push(renderCircuitWire(diagram, item));
+    if (item.type === "resistor") parts.push(renderCircuitResistor(diagram, item));
+    if (item.type === "lamp") parts.push(renderCircuitLamp(diagram, item));
+    if (item.type === "switch") parts.push(renderCircuitSwitch(diagram, item));
+    if (item.type === "ammeter") parts.push(renderCircuitAmmeter(diagram, item));
+    if (item.type === "battery") parts.push(renderCircuitBattery(diagram, item));
+    if (item.type === "voltage") parts.push(renderCircuitSource(diagram, item, "voltage"));
+    if (item.type === "current") parts.push(renderCircuitSource(diagram, item, "current"));
+    if (item.type === "arrow") parts.push(renderCircuitArrow(diagram, item));
+    if (item.type === "ground") parts.push(renderCircuitGround(diagram, item));
+    if (item.type === "label") parts.push(renderCircuitText(item.x, item.y, item.text, "circuit-title"));
+  }
+
+  const degrees = circuitNodeDegrees(diagram);
+  for (const node of diagram.nodes.values()) {
+    if ((degrees.get(node.id) || 0) >= 3 || diagram.dots.has(node.id)) {
+      parts.push(`<circle class="circuit-node" cx="${node.x}" cy="${node.y}" r="4" />`);
+    }
+  }
+
+  parts.push("</svg>");
+  return `<figure class="circuit-render">${parts.join("")}</figure>`;
+}
+
+function parseCircuitDiagram(source) {
+  const diagram = { width: 680, height: 360, nodes: new Map(), items: [], dots: new Set() };
+  const lines = String(source || "").split("\n");
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+
+    const tokens = line.split(/\s+/);
+    const command = tokens[0]?.toLowerCase();
+
+    if (command === "size" && tokens.length >= 3) {
+      diagram.width = clamp(Number(tokens[1]), 360, 1200);
+      diagram.height = clamp(Number(tokens[2]), 220, 900);
+    } else if (command === "node" && tokens.length >= 4) {
+      const [id, x, y] = [tokens[1], Number(tokens[2]), Number(tokens[3])];
+      if (id && Number.isFinite(x) && Number.isFinite(y)) diagram.nodes.set(id, { id, x, y });
+    } else if (command === "wire" && tokens.length >= 3) {
+      diagram.items.push({ type: "wire", from: tokens[1], to: tokens[2] });
+    } else if (["resistor", "voltage", "current"].includes(command) && tokens.length >= 5) {
+      diagram.items.push({ type: command, id: tokens[1], value: tokens[2], from: tokens[3], to: tokens[4] });
+    } else if (["lamp", "ammeter", "meter"].includes(command) && tokens.length >= 4) {
+      diagram.items.push({ type: command === "meter" ? "ammeter" : command, id: tokens[1], from: tokens[2], to: tokens[3] });
+    } else if (command === "battery" && tokens.length >= 4) {
+      const hasValue = tokens.length >= 5;
+      diagram.items.push({
+        type: "battery",
+        id: tokens[1],
+        value: hasValue ? tokens[2] : "",
+        from: hasValue ? tokens[3] : tokens[2],
+        to: hasValue ? tokens[4] : tokens[3]
+      });
+    } else if (command === "switch" && tokens.length >= 4) {
+      diagram.items.push({ type: "switch", id: tokens[1], from: tokens[2], to: tokens[3], state: tokens[4] || "open" });
+    } else if (command === "arrow" && tokens.length >= 4) {
+      diagram.items.push({ type: "arrow", id: tokens[1], from: tokens[2], to: tokens[3] });
+    } else if (command === "ground" && tokens.length >= 2) {
+      diagram.items.push({ type: "ground", at: tokens[1] });
+    } else if (command === "dot" && tokens.length >= 2) {
+      diagram.dots.add(tokens[1]);
+    } else if (command === "label" && tokens.length >= 4) {
+      diagram.items.push(parseCircuitLabel(tokens));
+    }
+  }
+
+  const drawableCount = diagram.items.filter((item) => item.type !== "label").length;
+  return diagram.nodes.size >= 2 && drawableCount ? diagram : null;
+}
+
+function parseCircuitLabel(tokens) {
+  if (Number.isFinite(Number(tokens[1])) && Number.isFinite(Number(tokens[2]))) {
+    return { type: "label", x: Number(tokens[1]), y: Number(tokens[2]), text: tokens.slice(3).join(" ") };
+  }
+
+  const x = Number(tokens[tokens.length - 2]);
+  const y = Number(tokens[tokens.length - 1]);
+  return {
+    type: "label",
+    x: Number.isFinite(x) ? x : 24,
+    y: Number.isFinite(y) ? y : 24,
+    text: tokens.slice(1, -2).join(" ")
+  };
+}
+
+function renderCircuitWire(diagram, item) {
+  const points = circuitPoints(diagram, item);
+  if (!points) return "";
+  return circuitLine(points.from, points.to, "circuit-wire");
+}
+
+function renderCircuitResistor(diagram, item) {
+  const geometry = circuitGeometry(diagram, item);
+  if (!geometry) return "";
+
+  const { from, to, start, end, unit, normal, bodyLength, mid } = geometry;
+  const segments = 8;
+  const amplitude = 10;
+  const points = [pointString(start)];
+  for (let index = 1; index < segments; index += 1) {
+    const along = bodyLength * index / segments;
+    const offset = index % 2 ? amplitude : -amplitude;
+    points.push(pointString({
+      x: start.x + unit.x * along + normal.x * offset,
+      y: start.y + unit.y * along + normal.y * offset
+    }));
+  }
+  points.push(pointString(end));
+
+  return [
+    circuitLine(from, start, "circuit-wire"),
+    `<polyline class="circuit-component" points="${points.join(" ")}" />`,
+    circuitLine(end, to, "circuit-wire"),
+    renderCircuitText(mid.x + normal.x * -30, mid.y + normal.y * -30, circuitComponentLabel(item))
+  ].join("");
+}
+
+function renderCircuitLamp(diagram, item) {
+  const geometry = circuitGeometry(diagram, item, 28);
+  if (!geometry) return "";
+
+  const { from, to, unit, normal, mid } = geometry;
+  const radius = 18;
+  const leadA = { x: mid.x - unit.x * radius, y: mid.y - unit.y * radius };
+  const leadB = { x: mid.x + unit.x * radius, y: mid.y + unit.y * radius };
+  const label = formatCircuitId(item.id || "L");
+  return [
+    circuitLine(from, leadA, "circuit-wire"),
+    circuitLine(leadB, to, "circuit-wire"),
+    `<circle class="circuit-symbol" cx="${mid.x}" cy="${mid.y}" r="${radius}" />`,
+    circuitLine({ x: mid.x - 10, y: mid.y - 10 }, { x: mid.x + 10, y: mid.y + 10 }, "circuit-component"),
+    circuitLine({ x: mid.x + 10, y: mid.y - 10 }, { x: mid.x - 10, y: mid.y + 10 }, "circuit-component"),
+    renderCircuitText(mid.x + normal.x * -38, mid.y + normal.y * -38, label)
+  ].join("");
+}
+
+function renderCircuitSwitch(diagram, item) {
+  const geometry = circuitGeometry(diagram, item, 18);
+  if (!geometry) return "";
+
+  const { from, to, unit, normal, mid } = geometry;
+  const totalLength = Math.hypot(to.x - from.x, to.y - from.y);
+  const contactGap = Math.min(64, Math.max(38, totalLength - 26));
+  const contactA = { x: mid.x - unit.x * contactGap / 2, y: mid.y - unit.y * contactGap / 2 };
+  const contactB = { x: mid.x + unit.x * contactGap / 2, y: mid.y + unit.y * contactGap / 2 };
+  const closed = String(item.state || "open").toLowerCase() === "closed";
+  const bladeEnd = closed
+    ? contactB
+    : {
+      x: contactA.x + unit.x * contactGap * 0.82 - normal.x * 22,
+      y: contactA.y + unit.y * contactGap * 0.82 - normal.y * 22
+    };
+
+  return [
+    circuitLine(from, contactA, "circuit-wire"),
+    circuitLine(contactB, to, "circuit-wire"),
+    `<circle class="circuit-contact" cx="${contactA.x}" cy="${contactA.y}" r="3.4" />`,
+    `<circle class="circuit-contact" cx="${contactB.x}" cy="${contactB.y}" r="3.4" />`,
+    circuitLine(contactA, bladeEnd, "circuit-component"),
+    renderCircuitText(mid.x + normal.x * 28, mid.y + normal.y * 28, formatCircuitId(item.id || "S"))
+  ].join("");
+}
+
+function renderCircuitAmmeter(diagram, item) {
+  const geometry = circuitGeometry(diagram, item, 24);
+  if (!geometry) return "";
+
+  const { from, to, unit, mid } = geometry;
+  const radius = 18;
+  const leadA = { x: mid.x - unit.x * radius, y: mid.y - unit.y * radius };
+  const leadB = { x: mid.x + unit.x * radius, y: mid.y + unit.y * radius };
+  return [
+    circuitLine(from, leadA, "circuit-wire"),
+    circuitLine(leadB, to, "circuit-wire"),
+    `<circle class="circuit-symbol" cx="${mid.x}" cy="${mid.y}" r="${radius}" />`,
+    renderCircuitText(mid.x, mid.y + 6, formatCircuitId(item.id || "A"), "circuit-meter-label")
+  ].join("");
+}
+
+function renderCircuitBattery(diagram, item) {
+  const geometry = circuitGeometry(diagram, item, 18);
+  if (!geometry) return "";
+
+  const { from, to, unit, normal, mid } = geometry;
+  const longCenter = { x: mid.x - unit.x * 7, y: mid.y - unit.y * 7 };
+  const shortCenter = { x: mid.x + unit.x * 12, y: mid.y + unit.y * 12 };
+  const longHalf = 22;
+  const shortHalf = 13;
+  const label = circuitComponentLabel(item);
+  return [
+    circuitLine(from, { x: longCenter.x - unit.x * 2, y: longCenter.y - unit.y * 2 }, "circuit-wire"),
+    circuitLine({ x: shortCenter.x + unit.x * 2, y: shortCenter.y + unit.y * 2 }, to, "circuit-wire"),
+    circuitLine(
+      { x: longCenter.x - normal.x * longHalf, y: longCenter.y - normal.y * longHalf },
+      { x: longCenter.x + normal.x * longHalf, y: longCenter.y + normal.y * longHalf },
+      "circuit-component"
+    ),
+    circuitLine(
+      { x: shortCenter.x - normal.x * shortHalf, y: shortCenter.y - normal.y * shortHalf },
+      { x: shortCenter.x + normal.x * shortHalf, y: shortCenter.y + normal.y * shortHalf },
+      "circuit-component"
+    ),
+    label ? renderCircuitText(mid.x + normal.x * 38, mid.y + normal.y * 38, label) : ""
+  ].join("");
+}
+
+function renderCircuitSource(diagram, item, kind) {
+  const geometry = circuitGeometry(diagram, item, 26);
+  if (!geometry) return "";
+
+  const { from, to, unit, normal, mid } = geometry;
+  const radius = 23;
+  const leadA = { x: mid.x - unit.x * radius, y: mid.y - unit.y * radius };
+  const leadB = { x: mid.x + unit.x * radius, y: mid.y + unit.y * radius };
+  const label = circuitComponentLabel(item);
+
+  const body = [
+    circuitLine(from, leadA, "circuit-wire"),
+    circuitLine(leadB, to, "circuit-wire"),
+    `<circle class="circuit-source" cx="${mid.x}" cy="${mid.y}" r="${radius}" />`,
+    renderCircuitText(mid.x + normal.x * -38, mid.y + normal.y * -38, label)
+  ];
+
+  if (kind === "voltage") {
+    body.push(renderCircuitText(mid.x + unit.x * 10, mid.y + unit.y * 10 - 8, "+", "circuit-polarity"));
+    body.push(renderCircuitText(mid.x - unit.x * 10, mid.y - unit.y * 10 + 14, "-", "circuit-polarity"));
+  } else {
+    body.push(circuitLine(
+      { x: mid.x - unit.x * 12, y: mid.y - unit.y * 12 },
+      { x: mid.x + unit.x * 12, y: mid.y + unit.y * 12 },
+      "circuit-arrow-line"
+    ));
+  }
+
+  return body.join("");
+}
+
+function renderCircuitArrow(diagram, item) {
+  const geometry = circuitGeometry(diagram, item, 0);
+  if (!geometry) return "";
+  const { from, to, normal, mid } = geometry;
+  const offset = -22;
+  const start = { x: from.x + normal.x * offset, y: from.y + normal.y * offset };
+  const end = { x: to.x + normal.x * offset, y: to.y + normal.y * offset };
+  return [
+    circuitLine(start, end, "circuit-arrow-line"),
+    renderCircuitText(mid.x + normal.x * (offset - 10), mid.y + normal.y * (offset - 10), formatCircuitId(item.id))
+  ].join("");
+}
+
+function renderCircuitGround(diagram, item) {
+  const point = diagram.nodes.get(item.at);
+  if (!point) return "";
+  return [
+    circuitLine(point, { x: point.x, y: point.y + 14 }, "circuit-wire"),
+    circuitLine({ x: point.x - 18, y: point.y + 14 }, { x: point.x + 18, y: point.y + 14 }, "circuit-ground-line"),
+    circuitLine({ x: point.x - 12, y: point.y + 21 }, { x: point.x + 12, y: point.y + 21 }, "circuit-ground-line"),
+    circuitLine({ x: point.x - 6, y: point.y + 28 }, { x: point.x + 6, y: point.y + 28 }, "circuit-ground-line")
+  ].join("");
+}
+
+function circuitGeometry(diagram, item, leadLength = 34) {
+  const points = circuitPoints(diagram, item);
+  if (!points) return null;
+  const dx = points.to.x - points.from.x;
+  const dy = points.to.y - points.from.y;
+  const length = Math.hypot(dx, dy);
+  if (length < 20) return null;
+  const unit = { x: dx / length, y: dy / length };
+  const normal = { x: -unit.y, y: unit.x };
+  const lead = Math.min(leadLength, length * 0.28);
+  const start = { x: points.from.x + unit.x * lead, y: points.from.y + unit.y * lead };
+  const end = { x: points.to.x - unit.x * lead, y: points.to.y - unit.y * lead };
+  return {
+    ...points,
+    unit,
+    normal,
+    start,
+    end,
+    bodyLength: Math.hypot(end.x - start.x, end.y - start.y),
+    mid: { x: (points.from.x + points.to.x) / 2, y: (points.from.y + points.to.y) / 2 }
+  };
+}
+
+function circuitNodeDegrees(diagram) {
+  const degrees = new Map();
+  const add = (id) => degrees.set(id, (degrees.get(id) || 0) + 1);
+
+  for (const item of diagram.items) {
+    if (item.from && item.to) {
+      add(item.from);
+      add(item.to);
+    }
+    if (item.at) add(item.at);
+  }
+
+  return degrees;
+}
+
+function circuitPoints(diagram, item) {
+  const from = diagram.nodes.get(item.from);
+  const to = diagram.nodes.get(item.to);
+  return from && to ? { from, to } : null;
+}
+
+function circuitLine(from, to, className) {
+  return `<line class="${className}" x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" />`;
+}
+
+function renderCircuitText(x, y, text, className = "circuit-label") {
+  return `<text class="${className}" x="${x}" y="${y}" text-anchor="middle">${renderCircuitTextContent(text, className)}</text>`;
+}
+
+function circuitComponentLabel(item) {
+  return [formatCircuitId(item.id), formatCircuitValue(item.value)].filter(Boolean).join(" = ");
+}
+
+function renderCircuitTextContent(text, className = "") {
+  const value = String(text || "");
+  if (className === "circuit-meter-label") return escapeHtml(value);
+
+  const subscriptDigits = {
+    "\u2080": "0",
+    "\u2081": "1",
+    "\u2082": "2",
+    "\u2083": "3",
+    "\u2084": "4",
+    "\u2085": "5",
+    "\u2086": "6",
+    "\u2087": "7",
+    "\u2088": "8",
+    "\u2089": "9"
+  };
+  let html = "";
+
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    const previous = value[index - 1] || "";
+
+    if (/[A-Za-z]/.test(char) && !/\d/.test(previous)) {
+      let name = char;
+      while (/[A-Za-z]/.test(value[index + 1] || "")) {
+        index += 1;
+        name += value[index];
+      }
+
+      let subscript = "";
+      if (value[index + 1] === "_") {
+        index += 1;
+        while (/[A-Za-z0-9]/.test(value[index + 1] || "")) {
+          index += 1;
+          subscript += value[index];
+        }
+      } else {
+        while (subscriptDigits[value[index + 1]]) {
+          index += 1;
+          subscript += subscriptDigits[value[index]];
+        }
+      }
+
+      html += `<tspan class="circuit-symbol-name">${escapeHtml(name)}</tspan>`;
+      if (subscript) html += `<tspan class="circuit-subscript">${escapeHtml(subscript)}</tspan>`;
+      continue;
+    }
+
+    html += escapeHtml(char);
+  }
+
+  return html;
+}
+
+function formatCircuitId(value = "") {
+  const subscripts = {
+    0: "\u2080",
+    1: "\u2081",
+    2: "\u2082",
+    3: "\u2083",
+    4: "\u2084",
+    5: "\u2085",
+    6: "\u2086",
+    7: "\u2087",
+    8: "\u2088",
+    9: "\u2089"
+  };
+  return String(value || "").replace(/([A-Za-z]+)_?(\d+)/g, (_match, name, digits) => (
+    `${name}${digits.replace(/\d/g, (digit) => subscripts[digit] || digit)}`
+  ));
+}
+
+function formatCircuitValue(value = "") {
+  return String(value || "").replace(/ohm/gi, "\u03a9");
+}
+
+function pointString(point) {
+  return `${point.x.toFixed(1)},${point.y.toFixed(1)}`;
 }
 
 function renderRichBlock(block) {
