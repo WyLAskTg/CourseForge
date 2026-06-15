@@ -1615,7 +1615,7 @@ function renderCircuitResistor(diagram, item) {
 
   const { from, to, start, end, unit, normal, bodyLength, mid } = geometry;
   const segments = 8;
-  const amplitude = 10;
+  const amplitude = 8;
   const points = [pointString(start)];
   for (let index = 1; index < segments; index += 1) {
     const along = bodyLength * index / segments;
@@ -1626,12 +1626,18 @@ function renderCircuitResistor(diagram, item) {
     }));
   }
   points.push(pointString(end));
+  const mostlyVertical = Math.abs(unit.y) > Math.abs(unit.x);
+  const label = circuitComponentLabel(item);
+  const labelX = mostlyVertical
+    ? mid.x + (mid.x > diagram.width - 90 ? -34 : 34)
+    : mid.x;
+  const labelY = mostlyVertical ? mid.y : mid.y + 30;
 
   return [
     circuitLine(from, start, "circuit-wire"),
     `<polyline class="circuit-component" points="${points.join(" ")}" />`,
     circuitLine(end, to, "circuit-wire"),
-    renderCircuitComponentLabel(diagram, geometry, circuitComponentLabel(item))
+    renderCircuitPlacedText(diagram, labelX, labelY, label)
   ].join("");
 }
 
@@ -1640,8 +1646,8 @@ function renderCircuitCapacitor(diagram, item) {
   if (!geometry) return "";
 
   const { from, to, unit, normal, mid } = geometry;
-  const plateOffset = 7;
-  const plateHalf = 20;
+  const plateOffset = 6;
+  const plateHalf = 16;
   const plateA = { x: mid.x - unit.x * plateOffset, y: mid.y - unit.y * plateOffset };
   const plateB = { x: mid.x + unit.x * plateOffset, y: mid.y + unit.y * plateOffset };
   const leadA = { x: plateA.x - unit.x * 2, y: plateA.y - unit.y * 2 };
@@ -1660,7 +1666,7 @@ function renderCircuitCapacitor(diagram, item) {
       { x: plateB.x + normal.x * plateHalf, y: plateB.y + normal.y * plateHalf },
       "circuit-component"
     ),
-    renderCircuitComponentLabel(diagram, geometry, circuitComponentLabel(item), { distance: 40 })
+    renderCircuitComponentLabel(diagram, geometry, circuitComponentLabel(item), { distance: 28 })
   ].join("");
 }
 
@@ -1669,7 +1675,7 @@ function renderCircuitLamp(diagram, item) {
   if (!geometry) return "";
 
   const { from, to, unit, normal, mid } = geometry;
-  const radius = 18;
+  const radius = 15;
   const leadA = { x: mid.x - unit.x * radius, y: mid.y - unit.y * radius };
   const leadB = { x: mid.x + unit.x * radius, y: mid.y + unit.y * radius };
   const label = formatCircuitId(item.id || "L");
@@ -1679,7 +1685,7 @@ function renderCircuitLamp(diagram, item) {
     `<circle class="circuit-symbol" cx="${mid.x}" cy="${mid.y}" r="${radius}" />`,
     circuitLine({ x: mid.x - 10, y: mid.y - 10 }, { x: mid.x + 10, y: mid.y + 10 }, "circuit-component"),
     circuitLine({ x: mid.x + 10, y: mid.y - 10 }, { x: mid.x - 10, y: mid.y + 10 }, "circuit-component"),
-    renderCircuitComponentLabel(diagram, geometry, label, { distance: 42 })
+    renderCircuitComponentLabel(diagram, geometry, label, { distance: 30 })
   ].join("");
 }
 
@@ -1689,7 +1695,7 @@ function renderCircuitSwitch(diagram, item) {
 
   const { from, to, unit, normal, mid } = geometry;
   const totalLength = Math.hypot(to.x - from.x, to.y - from.y);
-  const contactGap = Math.min(64, Math.max(38, totalLength - 26));
+  const contactGap = Math.min(58, Math.max(34, totalLength - 24));
   const contactA = { x: mid.x - unit.x * contactGap / 2, y: mid.y - unit.y * contactGap / 2 };
   const contactB = { x: mid.x + unit.x * contactGap / 2, y: mid.y + unit.y * contactGap / 2 };
   const closed = String(item.state || "open").toLowerCase() === "closed";
@@ -1706,7 +1712,7 @@ function renderCircuitSwitch(diagram, item) {
     `<circle class="circuit-contact" cx="${contactA.x}" cy="${contactA.y}" r="3.4" />`,
     `<circle class="circuit-contact" cx="${contactB.x}" cy="${contactB.y}" r="3.4" />`,
     circuitLine(contactA, bladeEnd, "circuit-component"),
-    renderCircuitComponentLabel(diagram, geometry, formatCircuitId(item.id || "S"), { distance: 34, preferredSide: 1 })
+    renderCircuitComponentLabel(diagram, geometry, formatCircuitId(item.id || "S"), { distance: 22, preferredSide: 1 })
   ].join("");
 }
 
@@ -1715,7 +1721,7 @@ function renderCircuitAmmeter(diagram, item) {
   if (!geometry) return "";
 
   const { from, to, unit, mid } = geometry;
-  const radius = 18;
+  const radius = 15;
   const leadA = { x: mid.x - unit.x * radius, y: mid.y - unit.y * radius };
   const leadB = { x: mid.x + unit.x * radius, y: mid.y + unit.y * radius };
   return [
@@ -1731,10 +1737,10 @@ function renderCircuitBattery(diagram, item) {
   if (!geometry) return "";
 
   const { from, to, unit, normal, mid } = geometry;
-  const longCenter = { x: mid.x - unit.x * 7, y: mid.y - unit.y * 7 };
-  const shortCenter = { x: mid.x + unit.x * 12, y: mid.y + unit.y * 12 };
-  const longHalf = 22;
-  const shortHalf = 13;
+  const longCenter = { x: mid.x - unit.x * 6, y: mid.y - unit.y * 6 };
+  const shortCenter = { x: mid.x + unit.x * 10, y: mid.y + unit.y * 10 };
+  const longHalf = 18;
+  const shortHalf = 11;
   const label = circuitComponentLabel(item);
   return [
     circuitLine(from, { x: longCenter.x - unit.x * 2, y: longCenter.y - unit.y * 2 }, "circuit-wire"),
@@ -1749,7 +1755,7 @@ function renderCircuitBattery(diagram, item) {
       { x: shortCenter.x + normal.x * shortHalf, y: shortCenter.y + normal.y * shortHalf },
       "circuit-component"
     ),
-    label ? renderCircuitComponentLabel(diagram, geometry, label, { distance: 42, preferredSide: 1 }) : ""
+    label ? renderCircuitComponentLabel(diagram, geometry, label, { distance: 28, preferredSide: 1 }) : ""
   ].join("");
 }
 
@@ -1758,7 +1764,7 @@ function renderCircuitSource(diagram, item, kind) {
   if (!geometry) return "";
 
   const { from, to, unit, normal, mid } = geometry;
-  const radius = 23;
+  const radius = 19;
   const leadA = { x: mid.x - unit.x * radius, y: mid.y - unit.y * radius };
   const leadB = { x: mid.x + unit.x * radius, y: mid.y + unit.y * radius };
   const label = circuitComponentLabel(item);
@@ -1767,7 +1773,7 @@ function renderCircuitSource(diagram, item, kind) {
     circuitLine(from, leadA, "circuit-wire"),
     circuitLine(leadB, to, "circuit-wire"),
     `<circle class="circuit-source" cx="${mid.x}" cy="${mid.y}" r="${radius}" />`,
-    renderCircuitComponentLabel(diagram, geometry, label, { distance: 42 })
+    renderCircuitComponentLabel(diagram, geometry, label, { distance: 28 })
   ];
 
   if (kind === "voltage") {
@@ -1880,13 +1886,13 @@ function circuitLabelCandidates(geometry, text, options = {}) {
   const { mid, unit, normal } = geometry;
   const mostlyVertical = Math.abs(unit.y) > Math.abs(unit.x);
   const textAwareDistance = mostlyVertical
-    ? Math.min(128, estimateCircuitTextWidth(text) / 2 + 42)
-    : 48;
+    ? Math.min(92, estimateCircuitTextWidth(text) / 2 + 18)
+    : 28;
   const baseDistance = Math.max(options.distance || 0, textAwareDistance);
   const preferredSide = options.preferredSide || -1;
   const sideOrder = [preferredSide, -preferredSide];
-  const distances = [baseDistance, baseDistance + 22, baseDistance + 42, baseDistance + 64];
-  const alongOffsets = [0, -26, 26, -48, 48, -70, 70];
+  const distances = [baseDistance, baseDistance + 12, baseDistance + 22, baseDistance + 34];
+  const alongOffsets = [0, -18, 18, -34, 34, -52, 52];
   const candidates = [];
 
   distances.forEach((distance, distanceIndex) => {
@@ -1919,8 +1925,8 @@ function circuitTextBox(x, y, text) {
   return {
     left: x - width / 2 - 5,
     right: x + width / 2 + 5,
-    top: y - 18,
-    bottom: y + 7
+    top: y - 16,
+    bottom: y + 6
   };
 }
 

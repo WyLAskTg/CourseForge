@@ -903,21 +903,21 @@ h2 {
   stroke-width: 4px;
   paint-order: stroke fill;
   font-family: Georgia, "Times New Roman", "Microsoft YaHei", serif;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
 }
 
 .circuit-title {
-  font-size: 15px;
+  font-size: 13px;
 }
 
 .circuit-polarity {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 900;
 }
 
 .circuit-meter-label {
-  font-size: 14px;
+  font-size: 13px;
   font-style: normal;
   stroke-width: 3px;
 }
