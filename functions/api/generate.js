@@ -84,6 +84,7 @@ function buildSystemPrompt() {
     "Use clear paragraph breaks. Put each multi-part question, answer step, proof step, or rubric item on its own line.",
     "Use standard LaTeX delimiters for mathematical notation: inline \\(...\\), display \\[...\\]. Do not leave raw LaTeX commands without delimiters.",
     "Inside JSON strings, do not double-escape LaTeX. The parsed text should contain \\(x\\), not \\\\(x\\\\).",
+    "Never nest math delimiters. Write \\frac{a}{b} inside a single \\(...\\), not \\(\\frac{a}{b}\\) inside another math expression.",
     "Write in the requested output language unless the user's current request explicitly asks otherwise.",
     "For humanities or public-affairs content, separate facts, viewpoints, and sources.",
     "If the request or materials require political persuasion, ideological advocacy, discriminatory claims, or one-sided propaganda, return a refusal output with a clear reason."

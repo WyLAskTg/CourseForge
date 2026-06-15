@@ -520,6 +520,10 @@ h2 {
   margin-top: 16px;
 }
 
+.settings-grid.knowledge-settings {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .settings-grid label span,
 .requirement-box span {
   margin-bottom: 8px;

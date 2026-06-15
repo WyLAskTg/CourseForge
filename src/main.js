@@ -65,6 +65,7 @@ function render() {
   const selectedTaskOption = taskOptions.find((option) => option.id === selectedTask) || taskOptions[0];
   const rootElement = document.getElementById("root");
   const hasCourse = Boolean(activeCourse);
+  const usesAssessmentSettings = isAssessmentTask(selectedTask);
 
   window.MathJax?.typesetClear?.([rootElement]);
   rootElement.innerHTML = `
@@ -171,7 +172,7 @@ function render() {
                 ${taskOptions.map(taskButton).join("")}
               </div>
 
-              <div class="settings-grid">
+              <div class="settings-grid ${usesAssessmentSettings ? "" : "knowledge-settings"}">
                 <label>
                   <span>${t("身份", "Role")}</span>
                   <select id="audienceSelect">
@@ -179,22 +180,24 @@ function render() {
                     ${option("教师", audience, t("教师", "Teacher"))}
                   </select>
                 </label>
-                <label>
-                  <span>${t("难度", "Difficulty")}</span>
-                  <select id="difficultySelect">
-                    ${option("基础", difficulty, t("基础", "Foundation"))}
-                    ${option("标准", difficulty, t("标准", "Standard"))}
-                    ${option("挑战", difficulty, t("挑战", "Challenge"))}
-                  </select>
-                </label>
-                <label>
-                  <span>${t("题量", "Count")}</span>
-                  <input id="questionCount" type="number" min="3" max="12" value="${questionCount}" />
-                </label>
-                <label class="toggle-row">
-                  <input id="includeAnswers" type="checkbox" ${includeAnswers ? "checked" : ""} />
-                  <span>${t("包含答案", "Include answers")}</span>
-                </label>
+                ${usesAssessmentSettings ? `
+                  <label>
+                    <span>${t("难度", "Difficulty")}</span>
+                    <select id="difficultySelect">
+                      ${option("基础", difficulty, t("基础", "Foundation"))}
+                      ${option("标准", difficulty, t("标准", "Standard"))}
+                      ${option("挑战", difficulty, t("挑战", "Challenge"))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>${t("题量", "Count")}</span>
+                    <input id="questionCount" type="number" min="3" max="12" value="${questionCount}" />
+                  </label>
+                  <label class="toggle-row">
+                    <input id="includeAnswers" type="checkbox" ${includeAnswers ? "checked" : ""} />
+                    <span>${t("包含答案", "Include answers")}</span>
+                  </label>
+                ` : ""}
               </div>
 
               <label class="requirement-box">
@@ -420,6 +423,8 @@ async function handleGenerate() {
 }
 
 function buildGenerationRequest({ task, course, documents, corpus, safety, settings }) {
+  const assessmentTask = isAssessmentTask(task);
+
   return {
     task,
     course: {
@@ -428,11 +433,16 @@ function buildGenerationRequest({ task, course, documents, corpus, safety, setti
       audience: settings.audience
     },
     settings: {
-      difficulty: settings.difficulty,
-      questionCount: settings.questionCount,
-      includeAnswers: settings.includeAnswers,
+      audience: settings.audience,
       extraRequirement: settings.extraRequirement,
-      language: uiLanguage
+      language: uiLanguage,
+      ...(assessmentTask
+        ? {
+          difficulty: settings.difficulty,
+          questionCount: settings.questionCount,
+          includeAnswers: settings.includeAnswers
+        }
+        : {})
     },
     safety,
     materials: documents.map((document) => ({
@@ -813,6 +823,10 @@ function getCorpus(courseDocuments) {
   return [...courseDocuments.map((document) => document.text), extraRequirement].join("\n");
 }
 
+function isAssessmentTask(task) {
+  return task === "quiz" || task === "mock";
+}
+
 function inferDocumentType(fileName) {
   const name = fileName.toLowerCase();
   if (/(syllabus|outline|大纲|考纲)/.test(name)) return "课程大纲 / Syllabus";
@@ -1072,7 +1086,7 @@ function renderRichBlock(block) {
 }
 
 function renderInlineText(value) {
-  return escapeHtml(normalizeBareLatex(value))
+  return escapeHtml(normalizeMathForDisplay(normalizeBareLatex(value)))
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/`([^`]+)`/g, "<code>$1</code>");
 }
@@ -1090,8 +1104,14 @@ function prettifyGeneratedText(value) {
 
 function normalizeLatexEscapes(value) {
   return value
-    .replace(/\\{2,}(?=[()[\]{}A-Za-z])/g, "\\")
+    .replace(/\\{2,}(?=[()[\]{}A-Za-z|])/g, "\\")
     .replace(/\\\s+([()[\]])/g, "\\$1");
+}
+
+function normalizeMathForDisplay(value) {
+  return collapseNestedMathDelimiters(value)
+    .replace(/\\\(\s*\\\)/g, "")
+    .replace(/\\\[\s*\\\]/g, "");
 }
 
 function normalizeBareLatex(value) {
@@ -1100,10 +1120,78 @@ function normalizeBareLatex(value) {
     .map((part) => {
       if (/^(\\\(|\\\[|\$\$|\$)/.test(part)) return part;
       return part
-        .replace(/\b([A-Za-z][A-Za-z0-9]*_\{[^}]+\})\b/g, "\\($1\\)")
-        .replace(/((?:\\(?:frac|sqrt|sum|prod|int|lim|cup|cap|setminus|mathbb|in|notin|subseteq|subset|leq|geq|neq|equiv|pmod|mid|nmid|rightarrow|Rightarrow|leftarrow|leftrightarrow|land|lor|neg|forall|exists)\b(?:\{[^}]*\}){0,3}|\b[A-Za-z0-9_{}^]+\s*\\(?:cup|cap|setminus|mid|nmid|land|lor)\s*[A-Za-z0-9_{}^]+))/g, "\\($1\\)");
+        .replace(/(\\left(?:\\.|[^\s])[\s\S]*?\\right(?:\\.|[^\s]))/g, "\\($1\\)")
+        .replace(/(\\langle[\s\S]*?\\rangle)/g, "\\($1\\)")
+        .replace(/\b([A-Za-z][A-Za-z0-9]*(?:_\{[^}]+\}|_[A-Za-z0-9]+|\^\{[^}]+\}|\^[A-Za-z0-9]+)+)/g, "\\($1\\)")
+        .replace(/((?:\\(?:frac|sqrt|sum|prod|int|lim|cup|cap|setminus|mathbb|mathbf|mathrm|mathcal|nabla|partial|langle|rangle|lVert|rVert|Vert|det|sin|cos|tan|ln|log|exp|max|min|in|notin|subseteq|subset|leq|geq|le|ge|neq|equiv|approx|cdot|times|pmod|mid|nmid|rightarrow|Rightarrow|leftarrow|leftrightarrow|land|lor|neg|forall|exists|circ)\b(?:\{[^}]*\}){0,3}|\b[A-Za-z0-9_{}^]+\s*\\(?:cup|cap|setminus|mid|nmid|land|lor|cdot|times|circ)\s*[A-Za-z0-9_{}^]+))/g, "\\($1\\)");
     })
     .join("");
+}
+
+function collapseNestedMathDelimiters(value) {
+  const delimiters = [
+    { open: "\\(", close: "\\)" },
+    { open: "\\[", close: "\\]" },
+    { open: "$$", close: "$$" },
+    { open: "$", close: "$" }
+  ];
+  let output = "";
+  let active = null;
+  let nestedDepth = 0;
+
+  for (let index = 0; index < value.length;) {
+    if (!active) {
+      const opening = findDelimiter(value, index, delimiters, "open");
+      if (opening) {
+        active = opening;
+        nestedDepth = 0;
+        output += opening.open;
+        index += opening.open.length;
+      } else {
+        output += value[index];
+        index += 1;
+      }
+      continue;
+    }
+
+    if (value.startsWith(active.open, index)) {
+      nestedDepth += 1;
+      index += active.open.length;
+      continue;
+    }
+
+    if (value.startsWith(active.close, index)) {
+      const closeLength = active.close.length;
+      if (nestedDepth > 0) {
+        nestedDepth -= 1;
+      } else {
+        output += active.close;
+        active = null;
+      }
+      index += closeLength;
+      continue;
+    }
+
+    const nestedOpening = findDelimiter(value, index, delimiters, "open");
+    const nestedClosing = findDelimiter(value, index, delimiters, "close");
+    if (nestedOpening) {
+      index += nestedOpening.open.length;
+      continue;
+    }
+    if (nestedClosing) {
+      index += nestedClosing.close.length;
+      continue;
+    }
+
+    output += value[index];
+    index += 1;
+  }
+
+  return output;
+}
+
+function findDelimiter(value, index, delimiters, key) {
+  return delimiters.find((delimiter) => value.startsWith(delimiter[key], index));
 }
 
 function isListLine(value) {
