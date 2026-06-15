@@ -4,6 +4,17 @@ const UI_LANGUAGE_KEY = "courseforge-ui-language";
 const TEXT_LIMIT = 120000;
 const SYNC_DEBOUNCE_MS = 900;
 const SEEDED_COURSE_IDS = new Set(["course-foundations", "course-humanities"]);
+const CIRCUIT_COMPONENT_TYPES = new Set(["resistor", "capacitor", "lamp", "switch", "ammeter", "battery", "voltage", "current"]);
+const CIRCUIT_COMPONENT_PRIORITIES = new Map([
+  ["resistor", 1],
+  ["capacitor", 1],
+  ["lamp", 1],
+  ["switch", 1],
+  ["battery", 2],
+  ["ammeter", 2],
+  ["voltage", 2],
+  ["current", 2]
+]);
 
 const defaultState = {
   courses: [],
@@ -1505,6 +1516,8 @@ function renderCircuitDiagram(source) {
   const diagram = parseCircuitDiagram(source);
   if (!diagram) return "";
   diagram.labelBoxes = [];
+  diagram.componentEdges = circuitComponentEdges(diagram);
+  diagram.primaryComponents = circuitPrimaryComponents(diagram);
 
   const parts = [
     `<svg viewBox="0 0 ${diagram.width} ${diagram.height}" role="img" aria-label="${escapeAttr(t("电路图", "Circuit diagram"))}">`,
@@ -1512,7 +1525,16 @@ function renderCircuitDiagram(source) {
   ];
 
   for (const item of diagram.items) {
-    if (item.type === "wire") parts.push(renderCircuitWire(diagram, item));
+    if (item.type === "wire") {
+      if (!isCircuitComponentEdge(diagram, item)) parts.push(renderCircuitWire(diagram, item));
+      continue;
+    }
+
+    if (isSecondaryCircuitComponent(diagram, item)) {
+      parts.push(renderCircuitSecondaryComponentLabel(diagram, item));
+      continue;
+    }
+
     if (item.type === "resistor") parts.push(renderCircuitResistor(diagram, item));
     if (item.type === "capacitor") parts.push(renderCircuitCapacitor(diagram, item));
     if (item.type === "lamp") parts.push(renderCircuitLamp(diagram, item));
@@ -1609,8 +1631,64 @@ function renderCircuitWire(diagram, item) {
   return circuitLine(points.from, points.to, "circuit-wire");
 }
 
+function circuitComponentEdges(diagram) {
+  return new Set(
+    diagram.items
+      .filter(isCircuitPhysicalComponent)
+      .map((item) => circuitEdgeKey(item.from, item.to))
+  );
+}
+
+function circuitPrimaryComponents(diagram) {
+  const grouped = new Map();
+  diagram.items.forEach((item, index) => {
+    if (!isCircuitPhysicalComponent(item)) return;
+    const key = circuitEdgeKey(item.from, item.to);
+    const entries = grouped.get(key) || [];
+    entries.push({ item, index });
+    grouped.set(key, entries);
+  });
+
+  const primary = new Map();
+  grouped.forEach((entries, key) => {
+    const [winner] = entries.sort((a, b) => (
+      circuitComponentPriority(a.item) - circuitComponentPriority(b.item) || a.index - b.index
+    ));
+    primary.set(key, winner.item);
+  });
+  return primary;
+}
+
+function isCircuitPhysicalComponent(item) {
+  return CIRCUIT_COMPONENT_TYPES.has(item.type) && item.from && item.to;
+}
+
+function circuitComponentPriority(item) {
+  return CIRCUIT_COMPONENT_PRIORITIES.get(item.type) || 9;
+}
+
+function isCircuitComponentEdge(diagram, item) {
+  return diagram.componentEdges?.has(circuitEdgeKey(item.from, item.to));
+}
+
+function isSecondaryCircuitComponent(diagram, item) {
+  if (!isCircuitPhysicalComponent(item)) return false;
+  const primary = diagram.primaryComponents?.get(circuitEdgeKey(item.from, item.to));
+  return Boolean(primary && primary !== item);
+}
+
+function renderCircuitSecondaryComponentLabel(diagram, item) {
+  const geometry = circuitGeometry(diagram, item, 0);
+  const label = circuitComponentLabel(item) || formatCircuitId(item.id);
+  return geometry && label ? renderCircuitComponentLabel(diagram, geometry, label, { distance: 24, preferredSide: 1 }) : "";
+}
+
+function circuitEdgeKey(from, to) {
+  return [String(from || ""), String(to || "")].sort().join("::");
+}
+
 function renderCircuitResistor(diagram, item) {
-  const geometry = circuitGeometry(diagram, item);
+  const geometry = circuitFixedBodyGeometry(diagram, item, 68);
   if (!geometry) return "";
 
   const { from, to, start, end, unit, normal, bodyLength, mid } = geometry;
@@ -1834,6 +1912,32 @@ function circuitGeometry(diagram, item, leadLength = 34) {
     end,
     bodyLength: Math.hypot(end.x - start.x, end.y - start.y),
     mid: { x: (points.from.x + points.to.x) / 2, y: (points.from.y + points.to.y) / 2 }
+  };
+}
+
+function circuitFixedBodyGeometry(diagram, item, fixedBodyLength) {
+  const points = circuitPoints(diagram, item);
+  if (!points) return null;
+  const dx = points.to.x - points.from.x;
+  const dy = points.to.y - points.from.y;
+  const length = Math.hypot(dx, dy);
+  if (length < 20) return null;
+  const unit = { x: dx / length, y: dy / length };
+  const normal = { x: -unit.y, y: unit.x };
+  const mid = { x: (points.from.x + points.to.x) / 2, y: (points.from.y + points.to.y) / 2 };
+  const bodyLength = Math.min(fixedBodyLength, Math.max(24, length - 18));
+  const halfBody = bodyLength / 2;
+  const start = { x: mid.x - unit.x * halfBody, y: mid.y - unit.y * halfBody };
+  const end = { x: mid.x + unit.x * halfBody, y: mid.y + unit.y * halfBody };
+
+  return {
+    ...points,
+    unit,
+    normal,
+    start,
+    end,
+    bodyLength,
+    mid
   };
 }
 
