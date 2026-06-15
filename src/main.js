@@ -998,7 +998,6 @@ function resultItem(generation, output, item, index) {
         </label>
       ` : ""}
       ${answerVisible ? `<div class="answer-box rich-text">${renderRichText(item.answer)}</div>` : ""}
-      ${item.checks ? `<div class="mini-checks">${item.checks.map((check) => `<span class="${escapeAttr(check.status)}">${escapeHtml(displayBilingual(check.label))}: ${escapeHtml(displayBilingual(check.detail))}</span>`).join("")}</div>` : ""}
     </article>
   `;
 }

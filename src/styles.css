@@ -133,7 +133,6 @@ button:disabled {
 .parse-message,
 .policy-box li,
 .check-chip small,
-.mini-checks span,
 .summary-card span,
 .summary-card small,
 .sidebar-note span {
@@ -692,15 +691,13 @@ h2 {
   margin-top: 10px;
 }
 
-.meta-list,
-.mini-checks {
+.meta-list {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 
-.meta-list span,
-.mini-checks span {
+.meta-list span {
   border-radius: 999px;
   padding: 4px 8px;
   background: #eef2f7;
@@ -733,20 +730,6 @@ h2 {
   width: 16px;
   height: 16px;
   accent-color: var(--teal);
-}
-
-.mini-checks {
-  margin-top: 10px;
-}
-
-.mini-checks .pass {
-  color: var(--green);
-  background: var(--green-soft);
-}
-
-.mini-checks .review {
-  color: var(--amber);
-  background: var(--amber-soft);
 }
 
 .empty-state {
