@@ -2171,6 +2171,11 @@ function renderRichBlock(block) {
   const lines = block.split("\n").map((line) => line.trim()).filter(Boolean);
   if (!lines.length) return "";
 
+  if (looksLikeBareCircuitDslText(block)) {
+    const diagram = renderCircuitDiagram(block);
+    if (diagram) return diagram;
+  }
+
   if (lines.some(isMarkdownImageLine)) {
     return lines
       .map((line) => (isMarkdownImageLine(line) ? renderMarkdownImage(line) : `<p>${renderInlineText(line)}</p>`))
@@ -2222,6 +2227,14 @@ function renderMarkdownImage(value) {
       </figcaption>
     </figure>
   `;
+}
+
+function looksLikeBareCircuitDslText(text) {
+  const lines = String(text || "").split("\n").map((line) => line.trim()).filter(Boolean);
+  if (lines.length < 3) return false;
+
+  const commandLines = lines.filter((line) => /^(size|node|wire|dot|resistor|capacitor|cap|lamp|switch|ammeter|meter|battery|voltage|current|arrow|ground|label)\b/i.test(line));
+  return commandLines.length >= 3 && commandLines.length >= Math.ceil(lines.length * 0.6);
 }
 
 function isEmbeddedImageSource(source) {

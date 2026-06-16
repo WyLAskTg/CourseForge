@@ -64,26 +64,14 @@ export async function generateCourseOutput(payload, options) {
 }
 
 async function generateWithDeepSeek(payload, { apiKey, model = DEFAULT_DEEPSEEK_MODEL }) {
-  const output = await requestDeepSeekOutput(payload, { apiKey, model });
-  const qualityIssues = findFinalAnswerQualityIssues(output);
-
-  if (!qualityIssues.length) return output;
-
-  try {
-    return await requestDeepSeekOutput(payload, {
-      apiKey,
-      model,
-      revision: buildRevisionPayload(output, qualityIssues)
-    });
-  } catch {
-    return output;
-  }
+  let output = await requestDeepSeekOutput(payload, { apiKey, model });
+  return reviseGeneratedOutput(payload, output, (revision) => requestDeepSeekOutput(payload, { apiKey, model, revision }));
 }
 
 async function requestDeepSeekOutput(payload, { apiKey, model, revision }) {
   const userPayload = buildUserPayload(payload);
   if (revision) {
-    userPayload.qualityRevision = revision;
+    userPayload.revisionRequest = revision;
   }
 
   const response = await fetch(DEEPSEEK_CHAT_URL, {
@@ -122,6 +110,16 @@ async function requestDeepSeekOutput(payload, { apiKey, model, revision }) {
 }
 
 async function generateWithOpenAI(payload, { apiKey, model = DEFAULT_OPENAI_MODEL }) {
+  let output = await requestOpenAIOutput(payload, { apiKey, model });
+  return reviseGeneratedOutput(payload, output, (revision) => requestOpenAIOutput(payload, { apiKey, model, revision }));
+}
+
+async function requestOpenAIOutput(payload, { apiKey, model = DEFAULT_OPENAI_MODEL, revision }) {
+  const userPayload = buildUserPayload(payload);
+  if (revision) {
+    userPayload.revisionRequest = revision;
+  }
+
   const response = await fetch(OPENAI_RESPONSES_URL, {
     method: "POST",
     headers: {
@@ -138,7 +136,7 @@ async function generateWithOpenAI(payload, { apiKey, model = DEFAULT_OPENAI_MODE
         },
         {
           role: "user",
-          content: JSON.stringify(buildUserPayload(payload))
+          content: JSON.stringify(userPayload)
         }
       ],
       store: false,
@@ -164,6 +162,26 @@ async function generateWithOpenAI(payload, { apiKey, model = DEFAULT_OPENAI_MODE
   return normalizeGeneratedOutput(parseJsonOutput(text), payload);
 }
 
+async function reviseGeneratedOutput(payload, output, requestRevision) {
+  let revised = output;
+  const qualityIssues = findFinalAnswerQualityIssues(revised);
+
+  if (qualityIssues.length) {
+    try {
+      revised = await requestRevision(buildRevisionPayload(revised, qualityIssues));
+    } catch {}
+  }
+
+  const circuitIssues = findCircuitRenderingIssues(revised);
+  if (!circuitIssues.length) return revised;
+
+  try {
+    return await requestRevision(buildCircuitRevisionPayload(revised, circuitIssues, payload));
+  } catch {
+    return revised;
+  }
+}
+
 function buildSystemPrompt() {
   return [
     "You are CourseForge, an education-focused generation engine.",
@@ -180,6 +198,7 @@ function buildSystemPrompt() {
     "Never use external image URLs, placeholder image services, Markdown image links, or links such as via.placeholder.com.",
     "When a non-circuit problem needs a diagram, describe the diagram completely in text unless the answer can be made self-contained without an image.",
     "For every circuit problem, you must draw the circuit with the CourseForge circuit DSL inside a fenced ```circuit block. Do not use ASCII art, box-drawing characters, Markdown image syntax, external links, or placeholder images for circuits.",
+    "Never leave a circuit question at the plain-text placeholder stage. Do not output lines like 电路：... or Circuit: ... unless the item body also contains a fenced ```circuit block that fully draws the topology.",
     "CourseForge circuit DSL commands are: size W H; node ID X Y; wire A B; dot A; resistor R1 2ohm A B; capacitor C1 1nF A B; lamp L A B; switch S1 A B open; switch S1 A B closed; ammeter A A B; battery U_S 12V A B; voltage US 12V A B; current IS 3A A B; arrow I A B; ground G; label text X Y. Use coordinates to define a readable textbook-style SVG layout with generous spacing between components and labels.",
     "If a diagram cannot be represented accurately, rewrite the question with a complete textual topology instead of linking to an image.",
     "Use standard LaTeX delimiters for mathematical notation: inline \\(...\\), display \\[...\\]. Do not leave raw LaTeX commands without delimiters.",
@@ -204,6 +223,7 @@ function buildUserPayload(payload) {
       type: material.type,
       text: String(material.text || "").slice(0, 30000)
     })),
+    generationRules: Array.isArray(payload.generationRules) ? payload.generationRules : [],
     currentRequest: payload.settings?.extraRequirement || "",
     answerQualityContract: [
       "Final answers must read like a clean model solution, not internal reasoning.",
@@ -421,6 +441,25 @@ export function findFinalAnswerQualityIssues(output) {
   return issues;
 }
 
+export function findCircuitRenderingIssues(output) {
+  const issues = [];
+
+  for (const [index, item] of (output?.items || []).entries()) {
+    const body = String(item?.body || "");
+    if (!body.trim()) continue;
+    if (!looksLikeCircuitQuestion(item)) continue;
+    if (hasCircuitDiagramBlock(body) || looksLikeBareCircuitDslText(body)) continue;
+
+    issues.push({
+      item: index + 1,
+      title: String(item?.title || `Item ${index + 1}`),
+      issue: "circuit question missing a renderable fenced ```circuit block"
+    });
+  }
+
+  return issues;
+}
+
 function hasExploratoryReasoning(text) {
   const patterns = [
     /然而题目可能/,
@@ -448,6 +487,52 @@ function hasContradictoryConclusion(text) {
   const positiveMaximum = /(有最大值|存在最大值|取得最大值|hasamaximum|maximumexists)/i.test(positiveMaximumText);
 
   return (positiveMinimum && negativeMinimum) || (positiveMaximum && negativeMaximum);
+}
+
+function buildCircuitRevisionPayload(previousOutput, circuitIssues, payload) {
+  return {
+    reason: "Some circuit questions were returned as plain text instead of a renderable circuit diagram block.",
+    detectedIssues: circuitIssues,
+    previousOutput,
+    requestedLanguage: payload?.settings?.language === "en" ? "English" : "Simplified Chinese",
+    instruction: [
+      "Rewrite every affected item so its body contains exactly one fenced ```circuit block using the CourseForge circuit DSL.",
+      "Keep the JSON schema and overall task type unchanged.",
+      "Preserve the intended topic, audience, and difficulty whenever possible.",
+      "Do not leave plain-text placeholders such as 电路：... or Circuit: ... without a circuit block.",
+      "If the previous wording does not contain enough topology to draw reliably, rewrite the whole affected item into a self-contained circuit question with a valid circuit block, matching options, and a matching final answer."
+    ].join(" ")
+  };
+}
+
+function hasCircuitDiagramBlock(text) {
+  return /```(?:circuit|circuit-svg)\s*[\s\S]*?```/i.test(String(text || ""));
+}
+
+function looksLikeCircuitQuestion(item) {
+  const text = [
+    String(item?.title || ""),
+    String(item?.body || ""),
+    ...(Array.isArray(item?.meta) ? item.meta.map(String) : [])
+  ].join("\n");
+
+  if (!text.trim()) return false;
+  if (/(^|\n)\s*(电路|circuit|schematic)\s*[:：]/i.test(text)) return true;
+  if (/(如下图所示|图示电路|电路如下|shown circuit|schematic below|schematic shown)/i.test(text)) return true;
+
+  const topicCue = /(电路|运放|运算放大器|理想运放|节点分析|网孔分析|戴维宁|诺顿|基尔霍夫|阻抗|电流源|电压源|circuit|schematic|op-amp|operational amplifier|nodal|node analysis|mesh|thevenin|norton|kcl|kvl|resistor network|current source|voltage source|impedance)/i.test(text);
+  const symbolCueCount = (text.match(/\b(?:R\d+|C\d+|L\d+|V[a-z0-9_]*|I[a-z0-9_]*|op-amp|KCL|KVL)\b/gi) || []).length;
+  const valueCueCount = (text.match(/\b\d+(?:\.\d+)?\s*(?:ohm|Ω|kΩ|MΩ|A|mA|uA|V|kV|pF|nF|uF|mH|H|R)\b/gi) || []).length;
+
+  return topicCue && symbolCueCount + valueCueCount >= 2;
+}
+
+function looksLikeBareCircuitDslText(text) {
+  const lines = String(text || "").split("\n").map((line) => line.trim()).filter(Boolean);
+  if (lines.length < 3) return false;
+
+  const commandLines = lines.filter((line) => /^(size|node|wire|dot|resistor|capacitor|cap|lamp|switch|ammeter|meter|battery|voltage|current|arrow|ground|label)\b/i.test(line));
+  return commandLines.length >= 3 && commandLines.length >= Math.ceil(lines.length * 0.6);
 }
 
 function outputSchema() {
