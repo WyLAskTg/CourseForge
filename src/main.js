@@ -65,9 +65,25 @@ let currentUser = null;
 let cloudSyncStatus = { level: "local", detail: "" };
 let cloudSyncTimer = null;
 let suppressCloudSync = false;
+let workspaceMode = "study";
+let feedbackItems = [];
+let activeFeedbackId = "";
+let activeFeedbackThread = null;
+let feedbackLoaded = false;
+let feedbackLoading = false;
+let feedbackThreadLoading = false;
+let feedbackSubmitting = false;
+let feedbackReplySubmitting = false;
+let feedbackError = "";
+let feedbackNotice = "";
+let feedbackDraftTitle = "";
+let feedbackDraftBody = "";
+let feedbackReplyDraft = "";
+let feedbackViewer = { authenticated: false, canReply: false, email: "" };
 
 render();
 initializeCloudSession();
+initializeFeedbackCenter();
 
 function render() {
   document.documentElement.lang = uiLanguage === "zh" ? "zh-CN" : "en";
@@ -83,6 +99,8 @@ function render() {
   const rootElement = document.getElementById("root");
   const hasCourse = Boolean(activeCourse);
   const usesAssessmentSettings = isAssessmentTask(selectedTask);
+  const feedbackPreviewItems = feedbackItems.slice(0, 3);
+  const showingFeedback = workspaceMode === "feedback";
 
   window.MathJax?.typesetClear?.([rootElement]);
   rootElement.innerHTML = `
@@ -138,6 +156,9 @@ function render() {
                 ${option("en", uiLanguage, "English")}
               </select>
             </label>
+            <button class="secondary-action ${showingFeedback ? "active" : ""}" id="feedbackCenterBtn" type="button">
+              ${icon(showingFeedback ? "book-open" : "messages-square")}<span>${showingFeedback ? t("返回学习区", "Back to Study") : t("意见反馈", "Feedback")}</span>
+            </button>
             <button class="secondary-action" id="copyResultBtn" type="button" ${activeGeneration ? "" : "disabled"}>
               ${icon("copy")}<span>${t("复制结果", "Copy")}</span>
             </button>
@@ -214,15 +235,19 @@ function render() {
             </section>
           </div>
 
-          <section class="panel output-panel">
-            <div class="panel-heading output-heading">
-              <div>
-                <p class="eyebrow">${t("生成结果", "Output")}</p>
-                <h2>${escapeHtml(displayBilingual(activeGeneration?.title || t("等待生成", "Waiting")))}</h2>
-              </div>
-              ${blockedBadge(activeGeneration?.output?.safety || safety)}
-            </div>
-            ${activeGeneration ? generatedOutput(activeGeneration) : emptyState("sparkles", t("暂无结果", "No output yet"), "Key points / Pitfalls / Quiz / Mock exam", false)}
+          <section class="panel output-panel ${showingFeedback ? "feedback-mode" : ""}">
+            ${showingFeedback
+              ? feedbackCenterPanel()
+              : `
+                <div class="panel-heading output-heading">
+                  <div>
+                    <p class="eyebrow">${t("生成结果", "Output")}</p>
+                    <h2>${escapeHtml(displayBilingual(activeGeneration?.title || t("等待生成", "Waiting")))}</h2>
+                  </div>
+                  ${blockedBadge(activeGeneration?.output?.safety || safety)}
+                </div>
+                ${activeGeneration ? generatedOutput(activeGeneration) : emptyState("sparkles", t("暂无结果", "No output yet"), "Key points / Pitfalls / Quiz / Mock exam", false)}
+              `}
           </section>
         </section>
       </main>
@@ -239,6 +264,23 @@ function render() {
         <div class="history-list">
           ${courseGenerations.length ? courseGenerations.map((generation) => historyItem(generation, activeGeneration?.id)).join("") : emptyState("history", t("没有历史记录", "No history"), t("自动保存在当前课程", "Saved to this course"), true)}
         </div>
+        <section class="feedback-spotlight">
+          <div class="feedback-spotlight-head">
+            <div>
+              <p class="eyebrow">${t("意见反馈", "Feedback")}</p>
+              <h3>${t("匿名建议箱", "Anonymous board")}</h3>
+            </div>
+            <button class="spotlight-link" id="feedbackSidebarBtn" type="button">${t("进入", "Open")}</button>
+          </div>
+          <p class="feedback-spotlight-note">${t("匿名发布建议，所有用户都能看到帖子和开发者回复。", "Post anonymous suggestions and let everyone read the thread and developer replies.")}</p>
+          <div class="feedback-mini-list">
+            ${feedbackLoading && !feedbackPreviewItems.length
+              ? `<p class="feedback-inline-status">${escapeHtml(t("正在加载反馈…", "Loading feedback…"))}</p>`
+              : (feedbackPreviewItems.length
+                ? feedbackPreviewItems.map(feedbackMiniItem).join("")
+                : `<p class="feedback-inline-status">${escapeHtml(t("还没有反馈帖，第一条建议就从你开始。", "No feedback posts yet. The first suggestion can be yours."))}</p>`)}
+          </div>
+        </section>
       </aside>
     </div>
   `;
@@ -253,6 +295,8 @@ function attachEvents(activeGeneration) {
   document.getElementById("logoutBtn")?.addEventListener("click", handleLogout);
   document.getElementById("syncNowBtn")?.addEventListener("click", () => pushCloudState({ renderAfter: true }));
   document.getElementById("courseForm")?.addEventListener("submit", handleCreateCourse);
+  document.getElementById("feedbackCenterBtn")?.addEventListener("click", toggleFeedbackCenter);
+  document.getElementById("feedbackSidebarBtn")?.addEventListener("click", openFeedbackCenter);
   document.getElementById("courseName")?.addEventListener("input", (event) => {
     event.target.classList.remove("needs-value");
   });
@@ -331,6 +375,27 @@ function attachEvents(activeGeneration) {
   document.querySelectorAll("[data-delete-generation]").forEach((button) => {
     button.addEventListener("click", () => {
       deleteGeneration(button.dataset.deleteGeneration);
+    });
+  });
+
+  document.getElementById("feedbackForm")?.addEventListener("submit", handleFeedbackSubmit);
+  document.getElementById("feedbackTitle")?.addEventListener("input", (event) => {
+    feedbackDraftTitle = event.target.value;
+  });
+  document.getElementById("feedbackBody")?.addEventListener("input", (event) => {
+    feedbackDraftBody = event.target.value;
+  });
+  document.getElementById("feedbackReplyForm")?.addEventListener("submit", handleFeedbackReplySubmit);
+  document.getElementById("feedbackReplyBody")?.addEventListener("input", (event) => {
+    feedbackReplyDraft = event.target.value;
+  });
+  document.getElementById("feedbackRefreshBtn")?.addEventListener("click", () => {
+    refreshFeedbackBoard({ keepSelection: true, loadThread: true });
+  });
+
+  document.querySelectorAll("[data-feedback-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openFeedbackThread(button.dataset.feedbackId);
     });
   });
 }
@@ -449,6 +514,180 @@ async function pushCloudState({ renderAfter = false } = {}) {
   }
 
   if (renderAfter) render();
+}
+
+async function initializeFeedbackCenter() {
+  if (feedbackLoaded || feedbackLoading) return;
+  await refreshFeedbackBoard({ keepSelection: true, loadThread: false, quiet: true });
+}
+
+function toggleFeedbackCenter() {
+  if (workspaceMode === "feedback") {
+    workspaceMode = "study";
+    render();
+    return;
+  }
+
+  openFeedbackCenter();
+}
+
+function openFeedbackCenter() {
+  workspaceMode = "feedback";
+  render();
+
+  if (!feedbackLoaded) {
+    refreshFeedbackBoard({ keepSelection: true, loadThread: true });
+    return;
+  }
+
+  if (!activeFeedbackThread && activeFeedbackId) {
+    loadFeedbackThread(activeFeedbackId);
+  }
+}
+
+async function refreshFeedbackBoard({ keepSelection = true, loadThread = true, quiet = false } = {}) {
+  feedbackLoading = true;
+  if (!quiet) render();
+
+  try {
+    const data = await apiJson("/api/feedback");
+    feedbackItems = Array.isArray(data.items) ? data.items : [];
+    feedbackViewer = normalizeFeedbackViewer(data.viewer);
+    feedbackLoaded = true;
+    feedbackError = "";
+
+    if (!keepSelection || !feedbackItems.some((item) => item.id === activeFeedbackId)) {
+      activeFeedbackId = feedbackItems[0]?.id || "";
+      activeFeedbackThread = null;
+    }
+
+    if (loadThread && activeFeedbackId) {
+      await loadFeedbackThread(activeFeedbackId, { quiet: true });
+    } else if (!activeFeedbackId) {
+      activeFeedbackThread = null;
+    }
+  } catch (error) {
+    feedbackError = error.message;
+  }
+
+  feedbackLoading = false;
+  render();
+}
+
+async function loadFeedbackThread(feedbackId, { quiet = false } = {}) {
+  if (!feedbackId) {
+    activeFeedbackId = "";
+    activeFeedbackThread = null;
+    feedbackReplyDraft = "";
+    render();
+    return;
+  }
+
+  if (feedbackId !== activeFeedbackId) {
+    feedbackReplyDraft = "";
+  }
+  activeFeedbackId = feedbackId;
+  feedbackThreadLoading = true;
+  if (!quiet) render();
+
+  try {
+    const data = await apiJson(`/api/feedback?id=${encodeURIComponent(feedbackId)}`);
+    activeFeedbackThread = data.thread || null;
+    feedbackViewer = normalizeFeedbackViewer(data.viewer);
+    feedbackError = "";
+  } catch (error) {
+    feedbackError = error.message;
+  }
+
+  feedbackThreadLoading = false;
+  render();
+}
+
+function openFeedbackThread(feedbackId) {
+  workspaceMode = "feedback";
+  loadFeedbackThread(feedbackId);
+}
+
+async function handleFeedbackSubmit(event) {
+  event.preventDefault();
+  const title = feedbackDraftTitle.trim();
+  const body = feedbackDraftBody.trim();
+
+  if (!title || !body) {
+    feedbackError = t("请先写标题和内容。", "Please enter both a title and feedback message.");
+    render();
+    return;
+  }
+
+  feedbackSubmitting = true;
+  feedbackError = "";
+  feedbackNotice = "";
+  render();
+
+  try {
+    const data = await apiJson("/api/feedback", {
+      method: "POST",
+      body: { title, body }
+    });
+
+    feedbackItems = Array.isArray(data.items) ? data.items : feedbackItems;
+    feedbackViewer = normalizeFeedbackViewer(data.viewer);
+    activeFeedbackId = data.thread?.id || activeFeedbackId;
+    activeFeedbackThread = data.thread || activeFeedbackThread;
+    feedbackLoaded = true;
+    feedbackDraftTitle = "";
+    feedbackDraftBody = "";
+    feedbackNotice = t("反馈已发布，感谢你帮我们把它打磨得更好。", "Feedback posted. Thank you for helping improve it.");
+    workspaceMode = "feedback";
+  } catch (error) {
+    feedbackError = error.message;
+  }
+
+  feedbackSubmitting = false;
+  render();
+}
+
+async function handleFeedbackReplySubmit(event) {
+  event.preventDefault();
+  if (!activeFeedbackId) return;
+
+  const body = feedbackReplyDraft.trim();
+  if (!body) {
+    feedbackError = t("请先输入回复内容。", "Please enter a reply before posting.");
+    render();
+    return;
+  }
+
+  feedbackReplySubmitting = true;
+  feedbackError = "";
+  feedbackNotice = "";
+  render();
+
+  try {
+    const data = await apiJson("/api/feedback", {
+      method: "POST",
+      body: { threadId: activeFeedbackId, body }
+    });
+
+    feedbackItems = Array.isArray(data.items) ? data.items : feedbackItems;
+    feedbackViewer = normalizeFeedbackViewer(data.viewer);
+    activeFeedbackThread = data.thread || activeFeedbackThread;
+    feedbackReplyDraft = "";
+    feedbackNotice = t("开发者回复已发布。", "Developer reply posted.");
+  } catch (error) {
+    feedbackError = error.message;
+  }
+
+  feedbackReplySubmitting = false;
+  render();
+}
+
+function normalizeFeedbackViewer(viewer) {
+  return {
+    authenticated: Boolean(viewer?.authenticated),
+    canReply: Boolean(viewer?.canReply),
+    email: String(viewer?.email || "")
+  };
 }
 
 async function uploadCloudFile(file, courseId, documentId) {
@@ -1375,6 +1614,162 @@ function historyItem(generation, activeId) {
       </button>
     </article>
   `;
+}
+
+function feedbackCenterPanel() {
+  return `
+    <div class="panel-heading output-heading feedback-heading">
+      <div>
+        <p class="eyebrow">${t("意见反馈", "Feedback")}</p>
+        <h2>${t("匿名建议与开发者回复", "Anonymous feedback and developer replies")}</h2>
+      </div>
+      <button class="secondary-action" id="feedbackRefreshBtn" type="button">
+        ${icon("refresh-cw")}<span>${t("刷新", "Refresh")}</span>
+      </button>
+    </div>
+    ${feedbackError ? `<p class="feedback-banner error">${escapeHtml(feedbackError)}</p>` : ""}
+    ${feedbackNotice ? `<p class="feedback-banner success">${escapeHtml(feedbackNotice)}</p>` : ""}
+    <div class="feedback-hub">
+      <div class="feedback-board">
+        <form class="feedback-compose" id="feedbackForm">
+          <div class="feedback-compose-head">
+            <div>
+              <strong>${t("匿名发帖", "Post anonymously")}</strong>
+              <small>${t("无需登录，所有访问者都能看到你的建议。", "No login required. Every visitor can read your suggestion.")}</small>
+            </div>
+          </div>
+          <input id="feedbackTitle" maxlength="90" placeholder="${t("标题，例如：希望增加错题收藏", "Title, for example: Please add saved mistakes")}" value="${escapeAttr(feedbackDraftTitle)}" />
+          <textarea id="feedbackBody" maxlength="1800" placeholder="${t("写下你的建议、体验问题，或你希望我们下一步做什么。", "Write your suggestion, pain point, or what you want us to build next.")}">${escapeHtml(feedbackDraftBody)}</textarea>
+          <div class="feedback-compose-actions">
+            <span>${escapeHtml(t("匿名公开显示", "Posted publicly and anonymously"))}</span>
+            <button class="primary-action" type="submit" ${feedbackSubmitting ? "disabled" : ""}>
+              ${icon(feedbackSubmitting ? "loader-2" : "send", feedbackSubmitting ? "spin" : "")}
+              <span>${feedbackSubmitting ? t("发布中", "Posting") : t("发布反馈", "Post feedback")}</span>
+            </button>
+          </div>
+        </form>
+
+        <div class="feedback-list-panel">
+          <div class="feedback-list-head">
+            <strong>${t("反馈帖", "Feedback threads")}</strong>
+            <span>${escapeHtml(t(`${feedbackItems.length} 条`, `${feedbackItems.length} thread(s)`))}</span>
+          </div>
+          <div class="feedback-list">
+            ${feedbackLoading && !feedbackItems.length
+              ? `<p class="feedback-inline-status">${escapeHtml(t("正在加载反馈…", "Loading feedback…"))}</p>`
+              : (feedbackItems.length
+                ? feedbackItems.map(feedbackListItem).join("")
+                : emptyState("messages-square", t("还没有反馈帖", "No feedback yet"), t("第一个建议会直接出现在这里。", "The first suggestion will appear here."), true))}
+          </div>
+        </div>
+      </div>
+
+      <div class="feedback-thread-panel">
+        ${feedbackThreadLoading
+          ? `<p class="feedback-inline-status">${escapeHtml(t("正在打开帖子…", "Opening thread…"))}</p>`
+          : (activeFeedbackThread
+            ? feedbackThreadView(activeFeedbackThread)
+            : emptyState("message-circle-more", t("请选择一条反馈帖", "Select a feedback thread"), t("点开左侧帖子，就能查看原帖和开发者回复。", "Open a thread on the left to read the post and developer replies."), false))}
+      </div>
+    </div>
+  `;
+}
+
+function feedbackMiniItem(item) {
+  return `
+    <button class="feedback-mini-item" type="button" data-feedback-id="${escapeAttr(item.id)}">
+      <strong>${escapeHtml(item.title)}</strong>
+      <span>${escapeHtml(feedbackPreviewText(item.body))}</span>
+      <small>${escapeHtml(t(`${item.replyCount || 0} 条回复`, `${item.replyCount || 0} repl${(item.replyCount || 0) === 1 ? "y" : "ies"}`))}</small>
+    </button>
+  `;
+}
+
+function feedbackListItem(item) {
+  return `
+    <button class="feedback-item ${item.id === activeFeedbackId ? "active" : ""}" type="button" data-feedback-id="${escapeAttr(item.id)}">
+      <div class="feedback-item-top">
+        <strong>${escapeHtml(item.title)}</strong>
+        <time>${escapeHtml(formatDate(item.updatedAt || item.createdAt))}</time>
+      </div>
+      <p>${escapeHtml(feedbackPreviewText(item.body))}</p>
+      <div class="feedback-item-meta">
+        <span>${escapeHtml(t("匿名用户", "Anonymous"))}</span>
+        <span>${escapeHtml(t(`${item.replyCount || 0} 条回复`, `${item.replyCount || 0} replies`))}</span>
+      </div>
+    </button>
+  `;
+}
+
+function feedbackThreadView(thread) {
+  const replies = Array.isArray(thread.replies) ? thread.replies : [];
+  return `
+    <div class="feedback-thread-card">
+      <div class="feedback-thread-header">
+        <div>
+          <p class="eyebrow">${t("帖子详情", "Thread detail")}</p>
+          <h3>${escapeHtml(thread.title)}</h3>
+        </div>
+        <time>${escapeHtml(formatDate(thread.createdAt))}</time>
+      </div>
+
+      <article class="feedback-message original">
+        <div class="feedback-message-head">
+          <strong>${t("匿名用户", "Anonymous")}</strong>
+          <span>${escapeHtml(formatDate(thread.createdAt))}</span>
+        </div>
+        <div class="feedback-message-body">${renderFeedbackText(thread.body)}</div>
+      </article>
+
+      <div class="feedback-thread-replies">
+        <div class="feedback-thread-subhead">
+          <strong>${t("开发者回复", "Developer replies")}</strong>
+          <span>${escapeHtml(t(`${replies.length} 条`, `${replies.length} reply${replies.length === 1 ? "" : "ies"}`))}</span>
+        </div>
+        ${replies.length
+          ? replies.map(feedbackReplyItem).join("")
+          : `<p class="feedback-inline-status">${escapeHtml(t("开发者还没有回复这条反馈。", "No developer reply on this thread yet."))}</p>`}
+      </div>
+
+      ${feedbackViewer.canReply
+        ? `
+          <form class="feedback-reply-form" id="feedbackReplyForm">
+            <label>
+              <span>${t("开发者回复", "Developer reply")}</span>
+              <textarea id="feedbackReplyBody" maxlength="1800" placeholder="${t("以开发者身份回复这条反馈。", "Reply to this feedback as the developer.")}">${escapeHtml(feedbackReplyDraft)}</textarea>
+            </label>
+            <div class="feedback-compose-actions">
+              <span>${escapeHtml(feedbackViewer.email || t("已登录开发者", "Signed-in developer"))}</span>
+              <button class="primary-action" type="submit" ${feedbackReplySubmitting ? "disabled" : ""}>
+                ${icon(feedbackReplySubmitting ? "loader-2" : "corner-down-left", feedbackReplySubmitting ? "spin" : "")}
+                <span>${feedbackReplySubmitting ? t("回复中", "Replying") : t("发布回复", "Post reply")}</span>
+              </button>
+            </div>
+          </form>
+        `
+        : `<p class="feedback-thread-note">${escapeHtml(t("开发者登录后可以在这里回复；普通用户可以匿名发帖和查看所有回复。", "The developer can reply here after signing in; visitors can still post anonymously and read every reply."))}</p>`}
+    </div>
+  `;
+}
+
+function feedbackReplyItem(reply) {
+  return `
+    <article class="feedback-message reply">
+      <div class="feedback-message-head">
+        <strong>${escapeHtml(reply.authorLabel || t("开发者", "Developer"))}</strong>
+        <span>${escapeHtml(formatDate(reply.createdAt))}</span>
+      </div>
+      <div class="feedback-message-body">${renderFeedbackText(reply.body)}</div>
+    </article>
+  `;
+}
+
+function feedbackPreviewText(value = "") {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, 90) || t("没有内容", "No content");
+}
+
+function renderFeedbackText(value = "") {
+  return escapeHtml(String(value || "").trim()).replace(/\n{2,}/g, "<br><br>").replace(/\n/g, "<br>");
 }
 
 function blockedBadge(safety) {

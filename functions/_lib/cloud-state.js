@@ -50,10 +50,30 @@ const schemaStatements = [
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS feedback_threads (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS feedback_replies (
+    id TEXT PRIMARY KEY,
+    thread_id TEXT NOT NULL,
+    author_user_id TEXT,
+    author_email TEXT,
+    author_label TEXT,
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
   "CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash)",
   "CREATE INDEX IF NOT EXISTS idx_courses_user_id ON courses(user_id)",
   "CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id)",
-  "CREATE INDEX IF NOT EXISTS idx_generations_user_id ON generations(user_id)"
+  "CREATE INDEX IF NOT EXISTS idx_generations_user_id ON generations(user_id)",
+  "CREATE INDEX IF NOT EXISTS idx_feedback_threads_updated_at ON feedback_threads(updated_at)",
+  "CREATE INDEX IF NOT EXISTS idx_feedback_replies_thread_id ON feedback_replies(thread_id)",
+  "CREATE INDEX IF NOT EXISTS idx_feedback_replies_created_at ON feedback_replies(created_at)"
 ];
 
 export function json(data, init = {}) {

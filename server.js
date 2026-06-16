@@ -15,9 +15,16 @@ const mimeTypes = {
   ".svg": "image/svg+xml"
 };
 
+const localFeedbackThreads = [];
+
 const server = http.createServer(async (request, response) => {
   try {
     const url = new URL(request.url, `http://localhost:${port}`);
+
+    if (url.pathname === "/api/feedback") {
+      await handleLocalFeedback(request, response, url);
+      return;
+    }
 
     if (url.pathname === "/api/generate") {
       if (request.method !== "POST") {
@@ -85,4 +92,83 @@ async function readJsonRequest(request) {
   }
 
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+async function handleLocalFeedback(request, response, url) {
+  if (request.method === "GET") {
+    const threadId = url.searchParams.get("id");
+    if (threadId) {
+      const thread = localFeedbackThreads.find((item) => item.id === threadId);
+      if (!thread) {
+        sendJson(response, 404, { error: "Feedback thread not found." });
+        return;
+      }
+
+      sendJson(response, 200, {
+        viewer: { authenticated: false, canReply: false, email: "" },
+        thread
+      });
+      return;
+    }
+
+    sendJson(response, 200, {
+      viewer: { authenticated: false, canReply: false, email: "" },
+      items: localFeedbackThreads.map(toLocalFeedbackListItem)
+    });
+    return;
+  }
+
+  if (request.method !== "POST") {
+    sendJson(response, 405, { error: "Method not allowed" });
+    return;
+  }
+
+  const body = await readJsonRequest(request).catch(() => ({}));
+  if (body?.threadId) {
+    sendJson(response, 403, {
+      error: "Developer replies are only available in the deployed Cloudflare version."
+    });
+    return;
+  }
+
+  const title = normalizeLocalFeedbackText(body?.title, 90);
+  const message = normalizeLocalFeedbackText(body?.body, 1800);
+  if (!title || !message) {
+    sendJson(response, 400, { error: "Please enter both a title and a feedback message." });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const thread = {
+    id: `local-feedback-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    title,
+    body: message,
+    replyCount: 0,
+    createdAt: now,
+    updatedAt: now,
+    replies: []
+  };
+
+  localFeedbackThreads.unshift(thread);
+
+  sendJson(response, 200, {
+    viewer: { authenticated: false, canReply: false, email: "" },
+    items: localFeedbackThreads.map(toLocalFeedbackListItem),
+    thread
+  });
+}
+
+function normalizeLocalFeedbackText(value, limit) {
+  return String(value || "").replace(/\r\n?/g, "\n").trim().slice(0, limit);
+}
+
+function toLocalFeedbackListItem(thread) {
+  return {
+    id: thread.id,
+    title: thread.title,
+    body: thread.body,
+    replyCount: thread.replyCount || 0,
+    createdAt: thread.createdAt,
+    updatedAt: thread.updatedAt
+  };
 }
