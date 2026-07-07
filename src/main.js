@@ -1,8 +1,14 @@
+import { PRODUCT_ANNOUNCEMENTS } from "./announcements.js";
+
 const STORAGE_KEY = "courseforge-state-v3";
 const LEGACY_STORAGE_KEY = "courseforge-state-v1";
 const UI_LANGUAGE_KEY = "courseforge-ui-language";
 const TEXT_LIMIT = 120000;
 const SYNC_DEBOUNCE_MS = 900;
+const SEARCH_RESULT_LIMIT = 12;
+const OCR_TEXT_THRESHOLD = 180;
+const OCR_SPARSE_PAGE_THRESHOLD = 0.6;
+const OCR_MAX_PAGES = 12;
 const SEEDED_COURSE_IDS = new Set(["course-foundations", "course-humanities"]);
 const CIRCUIT_COMPONENT_TYPES = new Set(["resistor", "capacitor", "lamp", "switch", "ammeter", "battery", "voltage", "current"]);
 const CIRCUIT_COMPONENT_PRIORITIES = new Map([
@@ -21,6 +27,12 @@ const defaultState = {
   documents: [],
   generations: []
 };
+
+const STUDY_STATUS_OPTIONS = [
+  { id: "stuck", zh: "不会", en: "Need Help" },
+  { id: "review", zh: "模糊", en: "Review" },
+  { id: "mastered", zh: "会了", en: "Got It" }
+];
 
 const taskOptions = [
   { id: "knowledge", label: "知识点", enLabel: "Key Points", icon: "book-open", tone: "提纲", enTone: "Outline" },
@@ -80,6 +92,9 @@ let feedbackDraftTitle = "";
 let feedbackDraftBody = "";
 let feedbackReplyDraft = "";
 let feedbackViewer = { authenticated: false, canReply: false, email: "" };
+let searchQuery = "";
+let activeQuestionKey = "";
+let pendingScrollTarget = "";
 
 render();
 initializeCloudSession();
@@ -101,6 +116,10 @@ function render() {
   const usesAssessmentSettings = isAssessmentTask(selectedTask);
   const feedbackPreviewItems = feedbackItems.slice(0, 3);
   const showingFeedback = workspaceMode === "feedback";
+  const questionReferences = collectQuestionReferences(courseGenerations);
+  const favoriteQuestionRefs = questionReferences.filter((item) => item.isFavorite);
+  const reviewQuestionRefs = questionReferences.filter((item) => ["review", "stuck"].includes(item.studyStatus));
+  const searchResults = buildWorkspaceSearchResults(searchQuery, courseDocuments, courseGenerations, questionReferences);
 
   window.MathJax?.typesetClear?.([rootElement]);
   rootElement.innerHTML = `
@@ -261,6 +280,70 @@ function render() {
           ${metric(t("生成", "Outputs"), courseGenerations.length)}
           ${metric(t("分类", "Categories"), state.courses.length)}
         </div>
+        <section class="announcement-panel">
+          <div class="memory-section-head">
+            <div>
+              <p class="eyebrow">${t("更新公告", "Updates")}</p>
+              <h3>${t("近期变更", "Recent changes")}</h3>
+            </div>
+            <span class="memory-chip draft">${t("草稿", "Draft")}</span>
+          </div>
+          <div class="announcement-list">
+            ${PRODUCT_ANNOUNCEMENTS.map(renderAnnouncementItem).join("")}
+          </div>
+        </section>
+        <section class="search-panel">
+          <div class="memory-section-head">
+            <div>
+              <p class="eyebrow">${t("搜索", "Search")}</p>
+              <h3>${t("当前课程检索", "Search this course")}</h3>
+            </div>
+            ${searchQuery ? `<button class="spotlight-link" id="clearSearchBtn" type="button">${t("清空", "Clear")}</button>` : ""}
+          </div>
+          <label class="search-input-wrap">
+            ${icon("search")}
+            <input id="workspaceSearch" type="search" value="${escapeAttr(searchQuery)}" placeholder="${t("搜索资料、历史记录、题目或收藏内容", "Search materials, history, questions, or favorites")}" />
+          </label>
+          <div class="search-result-list">
+            ${renderSearchResults(searchQuery, searchResults)}
+          </div>
+        </section>
+        <section class="study-board">
+          <div class="memory-section-head">
+            <div>
+              <p class="eyebrow">${t("学习工具", "Study Tools")}</p>
+              <h3>${t("收藏与错题复习", "Favorites and review queue")}</h3>
+            </div>
+          </div>
+          <div class="study-board-metrics">
+            <div class="memory-mini-metric">
+              <strong>${favoriteQuestionRefs.length}</strong>
+              <span>${t("收藏题目", "Favorites")}</span>
+            </div>
+            <div class="memory-mini-metric">
+              <strong>${reviewQuestionRefs.length}</strong>
+              <span>${t("待复习", "To review")}</span>
+            </div>
+          </div>
+          <div class="study-board-columns">
+            <div class="study-board-section">
+              <strong>${t("收藏夹", "Favorites")}</strong>
+              <div class="study-link-list">
+                ${favoriteQuestionRefs.length
+                  ? favoriteQuestionRefs.slice(0, 6).map(renderStudyLinkItem).join("")
+                  : `<p class="feedback-inline-status">${escapeHtml(t("给题目标星后会出现在这里。", "Star a question and it will appear here."))}</p>`}
+              </div>
+            </div>
+            <div class="study-board-section">
+              <strong>${t("错题复习", "Review queue")}</strong>
+              <div class="study-link-list">
+                ${reviewQuestionRefs.length
+                  ? reviewQuestionRefs.slice(0, 6).map(renderStudyLinkItem).join("")
+                  : `<p class="feedback-inline-status">${escapeHtml(t("把题目标记为“模糊”或“不会”后会加入这里。", "Mark questions as review or need help and they will show up here."))}</p>`}
+              </div>
+            </div>
+          </div>
+        </section>
         <div class="history-list">
           ${courseGenerations.length ? courseGenerations.map((generation) => historyItem(generation, activeGeneration?.id)).join("") : emptyState("history", t("没有历史记录", "No history"), t("自动保存在当前课程", "Saved to this course"), true)}
         </div>
@@ -324,6 +407,14 @@ function attachEvents(activeGeneration) {
   document.getElementById("extraRequirement")?.addEventListener("input", (event) => {
     extraRequirement = event.target.value;
   });
+  document.getElementById("workspaceSearch")?.addEventListener("input", (event) => {
+    searchQuery = event.target.value;
+    render();
+  });
+  document.getElementById("clearSearchBtn")?.addEventListener("click", () => {
+    searchQuery = "";
+    render();
+  });
 
   document.querySelectorAll("[data-answer-toggle]").forEach((checkbox) => {
     checkbox.addEventListener("change", () => {
@@ -340,6 +431,7 @@ function attachEvents(activeGeneration) {
     button.addEventListener("click", () => {
       activeCourseId = button.dataset.courseId;
       activeGenerationId = "";
+      activeQuestionKey = "";
       audience = getActiveCourse()?.audience || "学生";
       render();
     });
@@ -368,6 +460,7 @@ function attachEvents(activeGeneration) {
   document.querySelectorAll("[data-generation-id]").forEach((button) => {
     button.addEventListener("click", () => {
       activeGenerationId = button.dataset.generationId;
+      activeQuestionKey = "";
       render();
     });
   });
@@ -375,6 +468,43 @@ function attachEvents(activeGeneration) {
   document.querySelectorAll("[data-delete-generation]").forEach((button) => {
     button.addEventListener("click", () => {
       deleteGeneration(button.dataset.deleteGeneration);
+    });
+  });
+
+  document.querySelectorAll("[data-toggle-favorite]").forEach((button) => {
+    button.addEventListener("click", () => {
+      toggleQuestionFavorite(button.dataset.generationId, Number(button.dataset.itemIndex));
+    });
+  });
+
+  document.querySelectorAll("[data-mark-study]").forEach((button) => {
+    button.addEventListener("click", () => {
+      setQuestionStudyStatus(button.dataset.generationId, Number(button.dataset.itemIndex), button.dataset.markStudy);
+    });
+  });
+
+  document.querySelectorAll("[data-open-question]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openQuestionReference({
+        generationId: button.dataset.generationId,
+        questionKey: button.dataset.questionKey
+      });
+    });
+  });
+
+  document.querySelectorAll("[data-open-document]").forEach((button) => {
+    button.addEventListener("click", () => {
+      queueScrollTarget(`document:${button.dataset.openDocument}`);
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-open-generation]").forEach((button) => {
+    button.addEventListener("click", () => {
+      activeGenerationId = button.dataset.openGeneration;
+      activeQuestionKey = "";
+      queueScrollTarget(`generation:${button.dataset.openGeneration}`);
+      render();
     });
   });
 
@@ -398,6 +528,8 @@ function attachEvents(activeGeneration) {
       openFeedbackThread(button.dataset.feedbackId);
     });
   });
+
+  queueScrollToPendingTarget();
 }
 
 async function initializeCloudSession() {
@@ -690,6 +822,149 @@ function normalizeFeedbackViewer(viewer) {
   };
 }
 
+function toggleQuestionFavorite(generationId, itemIndex) {
+  updateGenerationItemState(generationId, itemIndex, (item) => ({
+    ...item,
+    isFavorite: !item.isFavorite
+  }));
+}
+
+function setQuestionStudyStatus(generationId, itemIndex, status) {
+  const nextStatus = normalizeStudyStatus(status);
+  updateGenerationItemState(generationId, itemIndex, (item) => ({
+    ...item,
+    studyStatus: item.studyStatus === nextStatus ? "" : nextStatus
+  }));
+}
+
+function updateGenerationItemState(generationId, itemIndex, updater) {
+  if (!generationId || !Number.isInteger(itemIndex) || itemIndex < 0) return;
+
+  const nextGenerations = state.generations.map((generation) => {
+    if (generation.id !== generationId) return generation;
+    const items = Array.isArray(generation.output?.items) ? generation.output.items : [];
+    if (!items[itemIndex]) return generation;
+
+    const nextItems = items.map((item, index) => (
+      index === itemIndex ? normalizeGeneratedItem(updater(normalizeGeneratedItem(item))) : normalizeGeneratedItem(item)
+    ));
+
+    return {
+      ...generation,
+      output: {
+        ...generation.output,
+        items: nextItems
+      }
+    };
+  });
+
+  persist({ ...state, generations: nextGenerations });
+  activeGenerationId = generationId;
+  activeQuestionKey = getQuestionKey(generationId, itemIndex);
+  queueScrollTarget(`question:${activeQuestionKey}`);
+  render();
+}
+
+function collectQuestionReferences(generations) {
+  return generations.flatMap((generation) => {
+    const items = Array.isArray(generation.output?.items) ? generation.output.items : [];
+    return items.map((item, index) => {
+      const normalizedItem = normalizeGeneratedItem(item);
+      return {
+        generationId: generation.id,
+        courseId: generation.courseId,
+        generationTitle: displayBilingual(generation.title || ""),
+        questionKey: getQuestionKey(generation.id, index),
+        itemIndex: index,
+        title: displayBilingual(normalizedItem.title || `Q${index + 1}`),
+        preview: plainTextPreview(normalizedItem.body),
+        isFavorite: Boolean(normalizedItem.isFavorite),
+        studyStatus: normalizedItem.studyStatus || "",
+        outputType: generation.output?.type || generation.task || ""
+      };
+    });
+  });
+}
+
+function openQuestionReference(reference) {
+  if (!reference?.generationId) return;
+  activeGenerationId = reference.generationId;
+  activeQuestionKey = reference.questionKey || "";
+  queueScrollTarget(reference.questionKey ? `question:${reference.questionKey}` : `generation:${reference.generationId}`);
+  render();
+}
+
+function queueScrollTarget(targetKey) {
+  pendingScrollTarget = String(targetKey || "");
+}
+
+function queueScrollToPendingTarget() {
+  if (!pendingScrollTarget) return;
+  const targetKey = pendingScrollTarget;
+  pendingScrollTarget = "";
+
+  window.requestAnimationFrame(() => {
+    const safeKey = escapeSelectorValue(targetKey);
+    const element = document.querySelector(`[data-scroll-target="${safeKey}"]`);
+    if (!element) return;
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+    element.classList.add("focus-flash");
+    window.setTimeout(() => element.classList.remove("focus-flash"), 1400);
+  });
+}
+
+function buildWorkspaceSearchResults(query, courseDocuments, courseGenerations, questionReferences) {
+  const normalizedQuery = String(query || "").trim().toLowerCase();
+  if (!normalizedQuery) return [];
+
+  const results = [];
+
+  for (const document of courseDocuments) {
+    const haystack = `${document.name} ${displayBilingual(document.type)} ${document.text || ""}`.toLowerCase();
+    if (!haystack.includes(normalizedQuery)) continue;
+    results.push({
+      id: `document:${document.id}`,
+      kind: "document",
+      title: document.name,
+      preview: plainTextPreview(document.text || displayBilingual(document.type)),
+      meta: `${displayBilingual(document.type)} · ${formatBytes(document.size)}`,
+      documentId: document.id
+    });
+    if (results.length >= SEARCH_RESULT_LIMIT) return results;
+  }
+
+  for (const generation of courseGenerations) {
+    const generationText = formatGenerationText(generation).toLowerCase();
+    if (!generationText.includes(normalizedQuery)) continue;
+    results.push({
+      id: `generation:${generation.id}`,
+      kind: "generation",
+      title: displayBilingual(generation.title || ""),
+      preview: plainTextPreview(generation.output?.items?.[0]?.body || ""),
+      meta: formatDate(generation.createdAt),
+      generationId: generation.id
+    });
+    if (results.length >= SEARCH_RESULT_LIMIT) return results;
+  }
+
+  for (const reference of questionReferences) {
+    const haystack = `${reference.title} ${reference.preview} ${reference.generationTitle}`.toLowerCase();
+    if (!haystack.includes(normalizedQuery)) continue;
+    results.push({
+      id: `question:${reference.questionKey}`,
+      kind: "question",
+      title: reference.title,
+      preview: reference.preview,
+      meta: buildStudyItemMeta(reference),
+      generationId: reference.generationId,
+      questionKey: reference.questionKey
+    });
+    if (results.length >= SEARCH_RESULT_LIMIT) return results;
+  }
+
+  return results;
+}
+
 async function uploadCloudFile(file, courseId, documentId) {
   if (!currentUser) return null;
 
@@ -776,6 +1051,7 @@ function deleteCourse(courseId) {
 
   activeCourseId = nextActiveCourse?.id || "";
   activeGenerationId = "";
+  activeQuestionKey = "";
   audience = nextActiveCourse?.audience || "学生";
   visibleAnswerKeys = new Set(
     Array.from(visibleAnswerKeys).filter((key) => nextGenerations.some((generation) => key.startsWith(`${generation.id}:`)))
@@ -796,6 +1072,9 @@ function deleteGeneration(generationId) {
   if (activeGenerationId === generationId) {
     activeGenerationId = "";
   }
+  if (activeQuestionKey.startsWith(`${generationId}:question:`)) {
+    activeQuestionKey = "";
+  }
   visibleAnswerKeys = new Set(Array.from(visibleAnswerKeys).filter((key) => !key.startsWith(`${generationId}:`)));
   render();
 }
@@ -810,20 +1089,29 @@ async function handleFilesSelected(event) {
   render();
 
   const uploaded = [];
+  let ocrUsedCount = 0;
   for (const file of files) {
     const documentId = crypto.randomUUID();
     let documentRecord;
 
     try {
-      const text = await extractTextFromFile(file);
+      parseMessage = t(`正在解析 ${file.name}`, `Parsing ${file.name}`);
+      render();
+      const extracted = await extractTextFromFile(file, {
+        onStatus: (message) => {
+          parseMessage = message;
+          render();
+        }
+      });
+      if (extracted.parseMode === "ocr") ocrUsedCount += 1;
       documentRecord = {
         id: documentId,
         courseId: activeCourse.id,
         name: file.name,
-        type: inferDocumentType(file.name),
+        type: applyDocumentParseMode(inferDocumentType(file.name), extracted.parseMode),
         size: file.size,
-        text,
-        safety: analyzeSafety(text),
+        text: extracted.text,
+        safety: analyzeSafety(extracted.text),
         createdAt: new Date().toISOString()
       };
     } catch (error) {
@@ -852,7 +1140,9 @@ async function handleFilesSelected(event) {
   }
 
   persist({ ...state, documents: [...uploaded, ...state.documents] });
-  parseMessage = t(`${uploaded.length} 个文件已加入课程资料库`, `${uploaded.length} file(s) added to this course`);
+  parseMessage = ocrUsedCount
+    ? t(`${uploaded.length} 个文件已加入课程资料库，其中 ${ocrUsedCount} 个扫描件使用了 OCR`, `${uploaded.length} file(s) added, with OCR used for ${ocrUsedCount} scanned PDF(s)`)
+    : t(`${uploaded.length} 个文件已加入课程资料库`, `${uploaded.length} file(s) added to this course`);
   isParsing = false;
   event.target.value = "";
   render();
@@ -992,7 +1282,7 @@ function normalizeAiOutput(data) {
     type: output.type || selectedTask,
     safety: output.safety || analyzeSafety(getCorpus(getCourseDocuments())),
     checks: Array.isArray(output.checks) ? output.checks : [],
-    items: output.items.map((item, index) => ({
+    items: output.items.map((item, index) => normalizeGeneratedItem({
       title: item.title || `Item ${index + 1}`,
       body: item.body || "",
       answer: item.answer || "",
@@ -1075,26 +1365,50 @@ function buildBackendNotConnectedOutput(error, safety) {
   };
 }
 
-async function extractTextFromFile(file) {
+async function extractTextFromFile(file, { onStatus } = {}) {
   const extension = getExtension(file.name);
-  if (extension === "txt" || file.type.startsWith("text/")) return truncateText(await file.text());
+  if (extension === "txt" || file.type.startsWith("text/")) {
+    return { text: truncateText(await file.text()), parseMode: "text" };
+  }
 
   if (extension === "docx") {
     const mammoth = await loadMammoth();
     const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
-    return truncateText(result.value || "");
+    return { text: truncateText(result.value || ""), parseMode: "text" };
   }
 
   if (extension === "pdf") {
+    onStatus?.(t(`正在解析 PDF 文本：${file.name}`, `Reading PDF text: ${file.name}`));
     const pdfjsLib = await loadPdfJs();
     const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
     const pages = [];
+    let sparsePageCount = 0;
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
       const page = await pdf.getPage(pageNumber);
       const content = await page.getTextContent();
-      pages.push(content.items.map((item) => item.str).join(" "));
+      const pageText = content.items.map((item) => item.str).join(" ").trim();
+      if (pageText.length < 12) sparsePageCount += 1;
+      pages.push(pageText);
     }
-    return truncateText(pages.join("\n\n"));
+    const directText = truncateText(pages.join("\n\n"));
+    const needsOcr = directText.length < OCR_TEXT_THRESHOLD
+      || (pdf.numPages > 0 && (sparsePageCount / pdf.numPages) >= OCR_SPARSE_PAGE_THRESHOLD);
+
+    if (!needsOcr) {
+      return { text: directText, parseMode: "text" };
+    }
+
+    onStatus?.(t(`检测到扫描版 PDF，正在进行 OCR：${file.name}`, `Scanned PDF detected, running OCR: ${file.name}`));
+    try {
+      const ocrText = await extractPdfTextWithOcr(pdf, onStatus);
+      if (ocrText.trim()) {
+        return { text: truncateText(ocrText), parseMode: "ocr" };
+      }
+    } catch (error) {
+      console.warn("OCR fallback failed", error);
+    }
+
+    return { text: directText, parseMode: "text" };
   }
 
   if (extension === "doc") throw new Error("旧版 DOC 需要后端转换后解析。 / Legacy DOC needs backend conversion.");
@@ -1116,6 +1430,59 @@ async function loadPdfJs() {
     parserCache.pdfjs = module;
   }
   return parserCache.pdfjs;
+}
+
+async function loadTesseractWorker() {
+  if (!parserCache.tesseractWorkerPromise) {
+    parserCache.tesseractWorkerPromise = (async () => {
+      const module = await import("https://esm.sh/tesseract.js@5/dist/tesseract.esm.min.js");
+      const createWorker = module.createWorker || module.default?.createWorker;
+      if (typeof createWorker !== "function") {
+        throw new Error("Tesseract worker is unavailable.");
+      }
+      return createWorker("eng+chi_sim");
+    })();
+  }
+
+  return parserCache.tesseractWorkerPromise;
+}
+
+async function extractPdfTextWithOcr(pdf, onStatus) {
+  const pageLimit = Math.min(pdf.numPages, OCR_MAX_PAGES);
+  const worker = await loadTesseractWorker();
+  const parts = [];
+
+  for (let pageNumber = 1; pageNumber <= pageLimit; pageNumber += 1) {
+    onStatus?.(t(`OCR 识别中：第 ${pageNumber}/${pageLimit} 页`, `Running OCR: page ${pageNumber}/${pageLimit}`));
+    const page = await pdf.getPage(pageNumber);
+    const canvas = await renderPdfPageToCanvas(page);
+    const result = await worker.recognize(canvas);
+    const text = result?.data?.text || "";
+    if (text.trim()) parts.push(text.trim());
+  }
+
+  const mergedText = parts.join("\n\n");
+  if (pdf.numPages > OCR_MAX_PAGES) {
+    return `${mergedText}\n\n${t(`注：OCR 目前只提取前 ${OCR_MAX_PAGES} 页。`, `Note: OCR currently extracts only the first ${OCR_MAX_PAGES} pages.`)}`;
+  }
+  return mergedText;
+}
+
+async function renderPdfPageToCanvas(page) {
+  const viewport = page.getViewport({ scale: 1.6 });
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+  const context = canvas.getContext("2d", { alpha: false });
+  await page.render({ canvasContext: context, viewport }).promise;
+  return canvas;
+}
+
+function applyDocumentParseMode(typeLabel, parseMode) {
+  if (parseMode !== "ocr") return typeLabel;
+  const parts = String(typeLabel || "").split(" / ");
+  if (parts.length < 2) return `${typeLabel} (OCR)`;
+  return `${parts[0]}（OCR） / ${parts.slice(1).join(" / ")} · OCR`;
 }
 
 function analyzeSafety(text) {
@@ -1425,9 +1792,57 @@ function normalizeState(value) {
     createdAt: course.createdAt || new Date().toISOString()
   }));
 
+  normalized.documents = normalized.documents.map((document) => ({
+    id: document.id || crypto.randomUUID(),
+    courseId: document.courseId || normalized.courses[0]?.id || "",
+    name: document.name || "Untitled",
+    type: document.type || inferDocumentType(document.name || ""),
+    size: Number(document.size || 0),
+    text: String(document.text || ""),
+    safety: document.safety || analyzeSafety(document.text || ""),
+    storageKey: document.storageKey || "",
+    createdAt: document.createdAt || new Date().toISOString()
+  }));
+
+  normalized.generations = normalized.generations.map((generation) => ({
+    id: generation.id || crypto.randomUUID(),
+    courseId: generation.courseId || normalized.courses[0]?.id || "",
+    task: generation.task || generation.output?.type || "knowledge",
+    title: generation.title || "Generated Output",
+    output: normalizeGenerationOutput(generation.output),
+    createdAt: generation.createdAt || new Date().toISOString()
+  }));
+
   normalized = removeUnusedSeedCourses(normalized);
 
   return normalized;
+}
+
+function normalizeGenerationOutput(output) {
+  return {
+    title: output?.title || "",
+    type: output?.type || "knowledge",
+    safety: output?.safety || null,
+    checks: Array.isArray(output?.checks) ? output.checks : [],
+    items: Array.isArray(output?.items) ? output.items.map(normalizeGeneratedItem) : []
+  };
+}
+
+function normalizeGeneratedItem(item = {}) {
+  return {
+    ...item,
+    title: String(item.title || ""),
+    body: String(item.body || ""),
+    answer: String(item.answer || ""),
+    meta: Array.isArray(item.meta) ? item.meta : [],
+    checks: Array.isArray(item.checks) ? item.checks : [],
+    isFavorite: Boolean(item.isFavorite),
+    studyStatus: normalizeStudyStatus(item.studyStatus)
+  };
+}
+
+function normalizeStudyStatus(value) {
+  return ["stuck", "review", "mastered"].includes(value) ? value : "";
 }
 
 function removeUnusedSeedCourses(value) {
@@ -1541,12 +1956,14 @@ function courseButton(course, activeId) {
 
 function documentRow(document) {
   const isBlocked = document.safety?.level === "blocked";
+  const usesOcr = /OCR/i.test(String(document.type || ""));
   return `
-    <article class="document-row ${isBlocked ? "" : "no-status"}">
+    <article class="document-row ${isBlocked ? "" : "no-status"}" data-scroll-target="document:${escapeAttr(document.id)}">
       <div class="file-icon">${icon("file-text")}</div>
       <div>
         <strong>${escapeHtml(document.name)}</strong>
         <span>${escapeHtml(displayBilingual(document.type))} · ${formatBytes(document.size)}</span>
+        ${usesOcr ? `<small class="document-note">${escapeHtml(t("扫描件已走 OCR", "Scanned PDF parsed with OCR"))}</small>` : ""}
       </div>
       ${blockedBadge(document.safety)}
       <button class="icon-button quiet" type="button" data-delete-doc="${escapeAttr(document.id)}" aria-label="${t("删除资料", "Delete material")}">
@@ -1577,23 +1994,44 @@ function generatedOutput(generation) {
 }
 
 function resultItem(generation, output, item, index) {
+  const normalizedItem = normalizeGeneratedItem(item);
   const answerKey = getAnswerKey(generation.id, index);
-  const hasAnswer = Boolean(item.answer);
+  const questionKey = getQuestionKey(generation.id, index);
+  const hasAnswer = Boolean(normalizedItem.answer);
   const answerVisible = hasAnswer && visibleAnswerKeys.has(answerKey);
+  const canTrackItem = output.type !== "refusal";
+  const showStudyTools = canTrackItem && isAssessmentTask(output.type);
 
   return `
-    <article class="result-item ${output.type === "refusal" ? "blocked" : ""}">
+    <article class="result-item ${output.type === "refusal" ? "blocked" : ""} ${questionKey === activeQuestionKey ? "focused" : ""}" data-scroll-target="question:${escapeAttr(questionKey)}">
       <div class="result-title">
-        <strong>${escapeHtml(displayBilingual(item.title))}</strong>
+        <strong>${escapeHtml(displayBilingual(normalizedItem.title))}</strong>
       </div>
-      <div class="rich-text result-body">${renderRichText(item.body)}</div>
+      <div class="rich-text result-body">${renderRichText(normalizedItem.body)}</div>
+      ${canTrackItem ? `
+        <div class="result-tools">
+          <button class="bookmark-toggle ${normalizedItem.isFavorite ? "active" : ""}" type="button" data-toggle-favorite="1" data-generation-id="${escapeAttr(generation.id)}" data-item-index="${index}">
+            ${icon("star")}
+            <span>${normalizedItem.isFavorite ? t("已收藏", "Saved") : t("收藏", "Save")}</span>
+          </button>
+          ${showStudyTools ? `
+            <div class="study-status-group" role="group" aria-label="${escapeAttr(t("掌握度", "Mastery"))}">
+              ${STUDY_STATUS_OPTIONS.map((option) => `
+                <button class="study-status-button ${normalizedItem.studyStatus === option.id ? "active" : ""}" type="button" data-mark-study="${escapeAttr(option.id)}" data-generation-id="${escapeAttr(generation.id)}" data-item-index="${index}">
+                  ${escapeHtml(biText(option.zh, option.en))}
+                </button>
+              `).join("")}
+            </div>
+          ` : ""}
+        </div>
+      ` : ""}
       ${hasAnswer ? `
         <label class="answer-toggle">
           <input type="checkbox" data-answer-toggle="${escapeAttr(answerKey)}" ${answerVisible ? "checked" : ""} />
           <span>${t("显示答案", "Show answer")}</span>
         </label>
       ` : ""}
-      ${answerVisible ? `<div class="answer-box rich-text">${renderRichText(item.answer)}</div>` : ""}
+      ${answerVisible ? `<div class="answer-box rich-text">${renderRichText(normalizedItem.answer)}</div>` : ""}
     </article>
   `;
 }
@@ -1602,9 +2040,13 @@ function getAnswerKey(generationId, index) {
   return `${generationId}:${index}`;
 }
 
+function getQuestionKey(generationId, index) {
+  return `${generationId}:question:${index}`;
+}
+
 function historyItem(generation, activeId) {
   return `
-    <article class="history-entry ${generation.id === activeId ? "active" : ""}">
+    <article class="history-entry ${generation.id === activeId ? "active" : ""}" data-scroll-target="generation:${escapeAttr(generation.id)}">
       <button class="history-item" type="button" data-generation-id="${escapeAttr(generation.id)}">
         <span>${escapeHtml(displayBilingual(generation.title))}</span>
         <small>${formatDate(generation.createdAt)}</small>
@@ -1770,6 +2212,96 @@ function feedbackPreviewText(value = "") {
 
 function renderFeedbackText(value = "") {
   return escapeHtml(String(value || "").trim()).replace(/\n{2,}/g, "<br><br>").replace(/\n/g, "<br>");
+}
+
+function renderAnnouncementItem(item) {
+  return `
+    <article class="announcement-item">
+      <div class="announcement-item-head">
+        <strong>${escapeHtml(displayBilingual(item.title))}</strong>
+        <time>${escapeHtml(item.date)}</time>
+      </div>
+      <p>${escapeHtml(displayBilingual(item.body))}</p>
+    </article>
+  `;
+}
+
+function renderSearchResults(query, results) {
+  if (!query.trim()) {
+    return `<p class="feedback-inline-status">${escapeHtml(t("输入关键词后，可搜索当前课程的资料、历史记录和题目。", "Enter a keyword to search materials, history, and questions in this course."))}</p>`;
+  }
+
+  if (!results.length) {
+    return `<p class="feedback-inline-status">${escapeHtml(t("没有匹配结果。", "No matching results."))}</p>`;
+  }
+
+  return results.map(renderSearchResultItem).join("");
+}
+
+function renderSearchResultItem(item) {
+  if (item.kind === "document") {
+    return `
+      <button class="search-result-item" type="button" data-open-document="${escapeAttr(item.documentId)}">
+        <strong>${escapeHtml(item.title)}</strong>
+        <span>${escapeHtml(item.meta)}</span>
+        <small>${escapeHtml(item.preview)}</small>
+      </button>
+    `;
+  }
+
+  if (item.kind === "generation") {
+    return `
+      <button class="search-result-item" type="button" data-open-generation="${escapeAttr(item.generationId)}">
+        <strong>${escapeHtml(item.title)}</strong>
+        <span>${escapeHtml(item.meta)}</span>
+        <small>${escapeHtml(item.preview)}</small>
+      </button>
+    `;
+  }
+
+  return `
+    <button class="search-result-item" type="button" data-open-question="1" data-generation-id="${escapeAttr(item.generationId)}" data-question-key="${escapeAttr(item.questionKey)}">
+      <strong>${escapeHtml(item.title)}</strong>
+      <span>${escapeHtml(item.meta)}</span>
+      <small>${escapeHtml(item.preview)}</small>
+    </button>
+  `;
+}
+
+function renderStudyLinkItem(item) {
+  return `
+    <button class="study-link-item" type="button" data-open-question="1" data-generation-id="${escapeAttr(item.generationId)}" data-question-key="${escapeAttr(item.questionKey)}">
+      <strong>${escapeHtml(item.title)}</strong>
+      <span>${escapeHtml(buildStudyItemMeta(item))}</span>
+      <small>${escapeHtml(item.preview)}</small>
+    </button>
+  `;
+}
+
+function buildStudyItemMeta(item) {
+  const parts = [item.generationTitle || ""];
+  if (item.studyStatus) parts.push(studyStatusLabel(item.studyStatus));
+  if (item.isFavorite) parts.push(t("已收藏", "Saved"));
+  return parts.filter(Boolean).join(" · ");
+}
+
+function studyStatusLabel(status) {
+  const match = STUDY_STATUS_OPTIONS.find((option) => option.id === status);
+  return match ? biText(match.zh, match.en) : "";
+}
+
+function plainTextPreview(value = "", limit = 110) {
+  const normalized = String(value || "")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/!\[[^\]]*]\([^)]+\)/g, " ")
+    .replace(/\\\(|\\\)|\\\[|\\\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return normalized.slice(0, limit) || t("没有内容", "No content");
+}
+
+function escapeSelectorValue(value = "") {
+  return String(value).replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
 }
 
 function blockedBadge(safety) {
