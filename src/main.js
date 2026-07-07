@@ -7,8 +7,9 @@ const TEXT_LIMIT = 120000;
 const SYNC_DEBOUNCE_MS = 900;
 const SEARCH_RESULT_LIMIT = 12;
 const OCR_TEXT_THRESHOLD = 180;
+const OCR_DIRECT_TEXT_ACCEPT_LENGTH = 1200;
 const OCR_SPARSE_PAGE_THRESHOLD = 0.6;
-const OCR_MAX_PAGES = 12;
+const OCR_RENDER_SCALE = 1;
 const SEEDED_COURSE_IDS = new Set(["course-foundations", "course-humanities"]);
 const CIRCUIT_COMPONENT_TYPES = new Set(["resistor", "capacitor", "lamp", "switch", "ammeter", "battery", "voltage", "current"]);
 const CIRCUIT_COMPONENT_PRIORITIES = new Map([
@@ -145,7 +146,7 @@ function render() {
       <main class="workspace">
         <header class="topbar">
           <div>
-            <p class="eyebrow">${t("课程工作台", "Course Workspace")}</p>
+            <p class="eyebrow">${t("当前课程", "Current Course")}</p>
             <h1>${escapeHtml(activeCourse?.name || t("创建你的第一门课程", "Create your first course"))}</h1>
           </div>
           <div class="header-actions">
@@ -1353,6 +1354,9 @@ async function extractTextFromFile(file, { onStatus } = {}) {
     const pages = [];
     let sparsePageCount = 0;
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+      if (pdf.numPages > 12 && (pageNumber === 1 || pageNumber % 10 === 0)) {
+        onStatus?.(t(`正在读取 PDF 文本：第 ${pageNumber}/${pdf.numPages} 页`, `Reading PDF text: page ${pageNumber}/${pdf.numPages}`));
+      }
       const page = await pdf.getPage(pageNumber);
       const content = await page.getTextContent();
       const pageText = content.items.map((item) => item.str).join(" ").trim();
@@ -1360,16 +1364,20 @@ async function extractTextFromFile(file, { onStatus } = {}) {
       pages.push(pageText);
     }
     const directText = truncateText(pages.join("\n\n"));
+    const processedPageCount = pages.length || 1;
+    const sparseRatio = sparsePageCount / processedPageCount;
+    const hasUsableDirectText = directText.length >= OCR_DIRECT_TEXT_ACCEPT_LENGTH;
     const needsOcr = directText.length < OCR_TEXT_THRESHOLD
-      || (pdf.numPages > 0 && (sparsePageCount / pdf.numPages) >= OCR_SPARSE_PAGE_THRESHOLD);
+      || (!hasUsableDirectText && sparseRatio >= OCR_SPARSE_PAGE_THRESHOLD);
 
     if (!needsOcr) {
       return { text: directText, parseMode: "text" };
     }
 
+    const ocrLanguages = chooseOcrLanguages(file.name, directText);
     onStatus?.(t(`检测到扫描版 PDF，正在进行 OCR：${file.name}`, `Scanned PDF detected, running OCR: ${file.name}`));
     try {
-      const ocrText = await extractPdfTextWithOcr(pdf, onStatus);
+      const ocrText = await extractPdfTextWithOcr(pdf, onStatus, ocrLanguages);
       if (ocrText.trim()) {
         return { text: truncateText(ocrText), parseMode: "ocr" };
       }
@@ -1401,44 +1409,56 @@ async function loadPdfJs() {
   return parserCache.pdfjs;
 }
 
-async function loadTesseractWorker() {
-  if (!parserCache.tesseractWorkerPromise) {
-    parserCache.tesseractWorkerPromise = (async () => {
+async function loadTesseractWorker(languages) {
+  const languageKey = languages || "eng";
+  parserCache.tesseractWorkerPromises ||= {};
+  if (!parserCache.tesseractWorkerPromises[languageKey]) {
+    parserCache.tesseractWorkerPromises[languageKey] = (async () => {
       const module = await import("https://esm.sh/tesseract.js@5/dist/tesseract.esm.min.js");
       const createWorker = module.createWorker || module.default?.createWorker;
       if (typeof createWorker !== "function") {
         throw new Error("Tesseract worker is unavailable.");
       }
-      return createWorker("eng+chi_sim");
+      const worker = await createWorker(languageKey);
+      try {
+        await worker.setParameters?.({
+          preserve_interword_spaces: "1",
+          tessedit_pageseg_mode: "6"
+        });
+      } catch (error) {
+        console.warn("Tesseract fast parameters unavailable", error);
+      }
+      return worker;
     })();
   }
 
-  return parserCache.tesseractWorkerPromise;
+  return parserCache.tesseractWorkerPromises[languageKey];
 }
 
-async function extractPdfTextWithOcr(pdf, onStatus) {
-  const pageLimit = Math.min(pdf.numPages, OCR_MAX_PAGES);
-  const worker = await loadTesseractWorker();
+async function extractPdfTextWithOcr(pdf, onStatus, languages) {
+  const pageLimit = pdf.numPages;
+  const worker = await loadTesseractWorker(languages);
   const parts = [];
 
   for (let pageNumber = 1; pageNumber <= pageLimit; pageNumber += 1) {
     onStatus?.(t(`OCR 识别中：第 ${pageNumber}/${pageLimit} 页`, `Running OCR: page ${pageNumber}/${pageLimit}`));
     const page = await pdf.getPage(pageNumber);
     const canvas = await renderPdfPageToCanvas(page);
-    const result = await worker.recognize(canvas);
-    const text = result?.data?.text || "";
-    if (text.trim()) parts.push(text.trim());
+    try {
+      const result = await worker.recognize(canvas);
+      const text = result?.data?.text || "";
+      if (text.trim()) parts.push(text.trim());
+    } finally {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
   }
 
-  const mergedText = parts.join("\n\n");
-  if (pdf.numPages > OCR_MAX_PAGES) {
-    return `${mergedText}\n\n${t(`注：OCR 目前只提取前 ${OCR_MAX_PAGES} 页。`, `Note: OCR currently extracts only the first ${OCR_MAX_PAGES} pages.`)}`;
-  }
-  return mergedText;
+  return parts.join("\n\n");
 }
 
 async function renderPdfPageToCanvas(page) {
-  const viewport = page.getViewport({ scale: 1.6 });
+  const viewport = page.getViewport({ scale: OCR_RENDER_SCALE });
   const canvas = document.createElement("canvas");
   canvas.width = Math.ceil(viewport.width);
   canvas.height = Math.ceil(viewport.height);
@@ -1678,6 +1698,10 @@ function fallbackTopics(courseName) {
 
 function getExtension(fileName) {
   return fileName.split(".").pop()?.toLowerCase() || "";
+}
+
+function chooseOcrLanguages(fileName, textSample = "") {
+  return /[\u3400-\u9fff]/.test(`${fileName} ${textSample}`) ? "eng+chi_sim" : "eng";
 }
 
 function truncateText(text) {
