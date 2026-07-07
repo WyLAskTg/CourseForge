@@ -56,7 +56,7 @@ let state = loadState();
 let activeCourseId = state.courses[0]?.id || "";
 let activeGenerationId = "";
 let selectedTask = "knowledge";
-let difficulty = "标准";
+let difficulty = "中";
 let questionCount = 5;
 let audience = state.courses[0]?.audience || "学生";
 let extraRequirement = "";
@@ -108,7 +108,7 @@ function render() {
   const hasCourse = Boolean(activeCourse);
   const usesAssessmentSettings = isAssessmentTask(selectedTask);
   const taskMode = usesAssessmentSettings ? "assessment" : "outline";
-  const taskTitle = taskMode === "assessment" ? t("试题", "Questions") : t("知识提纲", "Knowledge Outline");
+  const taskTitle = t("生成内容", "Generation");
   const showingFeedback = workspaceMode === "feedback";
   const questionReferences = collectQuestionReferences(courseGenerations);
   const favoriteQuestionRefs = questionReferences.filter((item) => item.isFavorite);
@@ -201,7 +201,7 @@ function render() {
               <div class="task-grid">
                 <button type="button" class="task-button ${taskMode === "outline" ? "selected" : ""}" data-task-mode="outline">
                   ${icon("book-open")}
-                  <span><strong>${t("知识提纲", "Knowledge Outline")}</strong><small>${t("提纲", "Outline")}</small></span>
+                  <span><strong>${t("知识提纲", "Knowledge Outline")}</strong></span>
                 </button>
                 <button type="button" class="task-button ${taskMode === "assessment" ? "selected" : ""}" data-task-mode="assessment">
                   ${icon("clipboard-list")}
@@ -221,9 +221,9 @@ function render() {
                   <label>
                     <span>${t("难度", "Difficulty")}</span>
                     <select id="difficultySelect">
-                      ${option("基础", difficulty, t("基础", "Foundation"))}
-                      ${option("标准", difficulty, t("标准", "Standard"))}
-                      ${option("挑战", difficulty, t("挑战", "Challenge"))}
+                      ${option("易", difficulty, t("易", "Easy"))}
+                      ${option("中", difficulty, t("中", "Medium"))}
+                      ${option("难", difficulty, t("难", "Hard"))}
                     </select>
                   </label>
                   <label>
@@ -234,8 +234,8 @@ function render() {
               ` : ""}
 
               <label class="requirement-box">
-                <span>${t("本次要求", "Current request")}</span>
-                <textarea id="extraRequirement" placeholder="${t("例：重点关注 Week 4；不要复用真题数据", "Example: focus on Week 4; do not reuse past exam data")}">${escapeHtml(extraRequirement)}</textarea>
+                <span>${t("附加要求", "Additional Requirements")}</span>
+                <textarea id="extraRequirement">${escapeHtml(extraRequirement)}</textarea>
               </label>
             </section>
           </div>
@@ -3284,9 +3284,9 @@ function roleLabel(value) {
 }
 
 function difficultyLabel(value) {
-  if (value === "基础") return t("基础", "Foundation");
-  if (value === "挑战") return t("挑战", "Challenge");
-  return t("标准", "Standard");
+  if (value === "易" || value === "基础") return t("易", "Easy");
+  if (value === "难" || value === "挑战") return t("难", "Hard");
+  return t("中", "Medium");
 }
 
 function formatBytes(size) {
