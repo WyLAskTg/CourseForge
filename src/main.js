@@ -246,12 +246,11 @@ function render() {
               : `
                 <div class="panel-heading output-heading">
                   <div>
-                    <p class="eyebrow">${t("生成结果", "Output")}</p>
-                    <h2>${escapeHtml(displayBilingual(activeGeneration?.title || t("等待生成", "Waiting")))}</h2>
+                    <h2>${escapeHtml(displayBilingual(activeGeneration?.title || t("生成结果", "Output")))}</h2>
                   </div>
                   ${blockedBadge(activeGeneration?.output?.safety || safety)}
                 </div>
-                ${activeGeneration ? generatedOutput(activeGeneration) : emptyState("sparkles", t("暂无结果", "No output yet"), "Key points / Pitfalls / Quiz / Mock exam", false)}
+                ${activeGeneration ? generatedOutput(activeGeneration) : emptyState("", t("暂无结果", "No output yet"), "", false)}
               `}
           </section>
         </section>
@@ -280,7 +279,7 @@ function render() {
           </div>
           <label class="search-input-wrap">
             ${icon("search")}
-            <input id="workspaceSearch" type="search" value="${escapeAttr(searchQuery)}" placeholder="${t("搜索资料、历史记录、题目或收藏内容", "Search materials, history, questions, or favorites")}" />
+            <input id="workspaceSearch" type="search" value="${escapeAttr(searchQuery)}" />
           </label>
           <div class="search-result-list">
             ${renderSearchResults(searchQuery, searchResults)}
@@ -2213,7 +2212,7 @@ function renderAnnouncementItem(item) {
 
 function renderSearchResults(query, results) {
   if (!query.trim()) {
-    return `<p class="feedback-inline-status">${escapeHtml(t("输入关键词后，可搜索当前课程的资料、历史记录和题目。", "Enter a keyword to search materials, history, and questions in this course."))}</p>`;
+    return `<p class="feedback-inline-status">${escapeHtml(t("输入关键词来检索历史生成记录。", "Enter keywords to search generation history."))}</p>`;
   }
 
   if (!results.length) {
@@ -2303,9 +2302,9 @@ function blockedBadge(safety) {
 function emptyState(iconName, title, text, compact = false) {
   return `
     <div class="empty-state ${compact ? "compact" : ""}">
-      ${icon(iconName)}
+      ${iconName ? icon(iconName) : ""}
       <strong>${escapeHtml(title)}</strong>
-      <span>${escapeHtml(text)}</span>
+      ${text ? `<span>${escapeHtml(text)}</span>` : ""}
     </div>
   `;
 }
