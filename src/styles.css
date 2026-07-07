@@ -227,10 +227,7 @@ button:disabled {
 .task-button small,
 .eyebrow,
 .empty-state span,
-.metric span,
-.parse-message,
-.sidebar-stat span,
-.sidebar-stat small {
+.parse-message {
   color: var(--muted);
   font-size: 12px;
 }
@@ -403,50 +400,6 @@ input.needs-value::placeholder {
   width: 10px;
   height: 36px;
   border-radius: 999px;
-}
-
-.sidebar-stats {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.sidebar-stat {
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  align-items: center;
-  gap: 1px 8px;
-  min-height: 74px;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: white;
-}
-
-.sidebar-stat div {
-  display: grid;
-  grid-row: span 3;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  color: var(--teal);
-  background: var(--teal-soft);
-  border-radius: 8px;
-}
-
-.sidebar-stat strong {
-  overflow: hidden;
-  font-size: 20px;
-  line-height: 1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sidebar-stat small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .workspace {
@@ -1095,26 +1048,6 @@ h2 {
   min-height: 120px;
 }
 
-.metric-strip {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-top: 20px;
-}
-
-.metric {
-  padding: 12px 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  text-align: center;
-  background: white;
-}
-
-.metric strong {
-  display: block;
-  font-size: 22px;
-}
-
 .history-entry {
   border: 1px solid var(--line);
   background: white;
@@ -1128,17 +1061,6 @@ h2 {
   padding: 10px 0 10px 12px;
 }
 
-.feedback-spotlight {
-  display: grid;
-  gap: 12px;
-  margin-top: 18px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: white;
-}
-
-.feedback-spotlight-head,
 .feedback-list-head,
 .feedback-compose-head,
 .feedback-thread-header,
@@ -1151,14 +1073,12 @@ h2 {
   gap: 10px;
 }
 
-.feedback-spotlight-head h3,
 .feedback-thread-header h3 {
   margin: 0;
   font-size: 17px;
   line-height: 1.2;
 }
 
-.feedback-spotlight-note,
 .feedback-thread-note {
   margin: 0;
   color: var(--muted);
@@ -1174,14 +1094,12 @@ h2 {
   font-weight: 900;
 }
 
-.feedback-mini-list,
 .feedback-list,
 .feedback-thread-replies {
   display: grid;
   gap: 10px;
 }
 
-.feedback-mini-item,
 .feedback-item {
   width: 100%;
   color: var(--text);
@@ -1191,19 +1109,11 @@ h2 {
   text-align: left;
 }
 
-.feedback-mini-item {
-  display: grid;
-  gap: 6px;
-  padding: 12px;
-}
-
-.feedback-mini-item strong,
 .feedback-item strong,
 .feedback-message-head strong {
   display: block;
 }
 
-.feedback-mini-item span,
 .feedback-item p,
 .feedback-message-head span,
 .feedback-item-meta span,
@@ -1218,14 +1128,11 @@ h2 {
   line-height: 1.45;
 }
 
-.feedback-mini-item span,
-.feedback-mini-item small,
 .feedback-item p,
 .feedback-item-meta span {
   overflow-wrap: anywhere;
 }
 
-.feedback-mini-item:hover,
 .feedback-item:hover {
   border-color: #c2ccd4;
   background: white;
@@ -1447,6 +1354,7 @@ h2 {
   color: #344054;
   font-size: 13px;
   line-height: 1.55;
+  white-space: pre-line;
 }
 
 .announcement-item time {
@@ -1654,7 +1562,6 @@ h2 {
   .topbar,
   .panel-heading,
   .result-title,
-  .feedback-spotlight-head,
   .feedback-list-head,
   .feedback-compose-head,
   .feedback-thread-header,
@@ -1695,8 +1602,7 @@ h2 {
 
 @media (max-width: 620px) {
   .task-grid,
-  .settings-grid,
-  .metric-strip {
+  .settings-grid {
     grid-template-columns: 1fr;
   }
 

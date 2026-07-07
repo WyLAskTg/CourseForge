@@ -114,7 +114,6 @@ function render() {
   const rootElement = document.getElementById("root");
   const hasCourse = Boolean(activeCourse);
   const usesAssessmentSettings = isAssessmentTask(selectedTask);
-  const feedbackPreviewItems = feedbackItems.slice(0, 3);
   const showingFeedback = workspaceMode === "feedback";
   const questionReferences = collectQuestionReferences(courseGenerations);
   const favoriteQuestionRefs = questionReferences.filter((item) => item.isFavorite);
@@ -155,10 +154,6 @@ function render() {
           ${state.courses.length ? state.courses.map((course) => courseButton(course, activeCourse?.id)).join("") : emptyState("folder-plus", t("还没有课程", "No courses yet"), t("先创建一个课程分类", "Create a course category first"), true)}
         </div>
 
-        <div class="sidebar-stats" aria-label="${t("课程状态", "Course status")}">
-          ${sidebarStat("file-text", t("资料", "Materials"), courseDocuments.length, t("当前课程", "Current course"))}
-          ${sidebarStat("sparkles", t("生成", "Outputs"), courseGenerations.length, t("历史记录", "History"))}
-        </div>
       </aside>
 
       <main class="workspace">
@@ -275,18 +270,11 @@ function render() {
         <div class="memory-heading">
           ${icon("history")}<h2>${t("课程记忆", "Course Memory")}</h2>
         </div>
-        <div class="metric-strip">
-          ${metric(t("资料", "Materials"), courseDocuments.length)}
-          ${metric(t("生成", "Outputs"), courseGenerations.length)}
-          ${metric(t("分类", "Categories"), state.courses.length)}
-        </div>
         <section class="announcement-panel">
           <div class="memory-section-head">
             <div>
-              <p class="eyebrow">${t("更新公告", "Updates")}</p>
-              <h3>${t("近期变更", "Recent changes")}</h3>
+              <h3>${t("更新公告", "Updates")}</h3>
             </div>
-            <span class="memory-chip draft">${t("草稿", "Draft")}</span>
           </div>
           <div class="announcement-list">
             ${PRODUCT_ANNOUNCEMENTS.map(renderAnnouncementItem).join("")}
@@ -295,8 +283,7 @@ function render() {
         <section class="search-panel">
           <div class="memory-section-head">
             <div>
-              <p class="eyebrow">${t("搜索", "Search")}</p>
-              <h3>${t("当前课程检索", "Search this course")}</h3>
+              <h3>${t("资料检索", "Material Search")}</h3>
             </div>
             ${searchQuery ? `<button class="spotlight-link" id="clearSearchBtn" type="button">${t("清空", "Clear")}</button>` : ""}
           </div>
@@ -311,7 +298,6 @@ function render() {
         <section class="study-board">
           <div class="memory-section-head">
             <div>
-              <p class="eyebrow">${t("学习工具", "Study Tools")}</p>
               <h3>${t("收藏与错题复习", "Favorites and review queue")}</h3>
             </div>
           </div>
@@ -347,23 +333,6 @@ function render() {
         <div class="history-list">
           ${courseGenerations.length ? courseGenerations.map((generation) => historyItem(generation, activeGeneration?.id)).join("") : emptyState("history", t("没有历史记录", "No history"), t("自动保存在当前课程", "Saved to this course"), true)}
         </div>
-        <section class="feedback-spotlight">
-          <div class="feedback-spotlight-head">
-            <div>
-              <p class="eyebrow">${t("意见反馈", "Feedback")}</p>
-              <h3>${t("匿名建议箱", "Anonymous board")}</h3>
-            </div>
-            <button class="spotlight-link" id="feedbackSidebarBtn" type="button">${t("进入", "Open")}</button>
-          </div>
-          <p class="feedback-spotlight-note">${t("匿名发布建议，所有用户都能看到帖子和开发者回复。", "Post anonymous suggestions and let everyone read the thread and developer replies.")}</p>
-          <div class="feedback-mini-list">
-            ${feedbackLoading && !feedbackPreviewItems.length
-              ? `<p class="feedback-inline-status">${escapeHtml(t("正在加载反馈…", "Loading feedback…"))}</p>`
-              : (feedbackPreviewItems.length
-                ? feedbackPreviewItems.map(feedbackMiniItem).join("")
-                : `<p class="feedback-inline-status">${escapeHtml(t("还没有反馈帖，第一条建议就从你开始。", "No feedback posts yet. The first suggestion can be yours."))}</p>`)}
-          </div>
-        </section>
       </aside>
     </div>
   `;
@@ -379,7 +348,6 @@ function attachEvents(activeGeneration) {
   document.getElementById("syncNowBtn")?.addEventListener("click", () => pushCloudState({ renderAfter: true }));
   document.getElementById("courseForm")?.addEventListener("submit", handleCreateCourse);
   document.getElementById("feedbackCenterBtn")?.addEventListener("click", toggleFeedbackCenter);
-  document.getElementById("feedbackSidebarBtn")?.addEventListener("click", openFeedbackCenter);
   document.getElementById("courseName")?.addEventListener("input", (event) => {
     event.target.classList.remove("needs-value");
   });
@@ -1865,7 +1833,7 @@ function authPanel() {
     return `
       <section class="auth-card">
         <div class="auth-heading">
-          <strong>${t("云端同步", "Cloud Sync")}</strong>
+          <strong>${t("账号登录", "Account Login")}</strong>
           <span class="auth-status ${escapeAttr(cloudSyncStatus.level)}">${escapeHtml(statusText)}</span>
         </div>
         <p class="auth-email">${escapeHtml(currentUser.email)}</p>
@@ -1881,8 +1849,7 @@ function authPanel() {
   return `
     <section class="auth-card">
       <div class="auth-heading">
-        <strong>${t("云端同步", "Cloud Sync")}</strong>
-        <span class="auth-status ${escapeAttr(cloudSyncStatus.level)}">${escapeHtml(statusText)}</span>
+        <strong>${t("账号登录", "Account Login")}</strong>
       </div>
       <small>${escapeHtml(detail)}</small>
       <form class="auth-form" id="authForm">
@@ -1905,7 +1872,7 @@ function cloudStatusText() {
     syncing: t("同步中", "Syncing"),
     pending: t("待同步", "Pending"),
     synced: t("已同步", "Synced"),
-    signedOut: t("本地保存", "Local only"),
+    signedOut: "",
     unavailable: t("云端未配置", "Cloud unavailable"),
     authError: t("登录失败", "Sign-in failed"),
     syncError: t("同步失败", "Sync failed")
@@ -1926,7 +1893,7 @@ function cloudStatusDetail() {
     syncing: t("正在保存课程、资料和生成记录。", "Saving courses, materials, and generated outputs."),
     pending: t("本次更改会自动保存到云端。", "This change will be saved to the cloud automatically."),
     synced: t("课程、资料和生成记录已保存。", "Courses, materials, and generated outputs are saved."),
-    signedOut: t("登录后可在不同设备和网址继续使用。", "Sign in to keep working across devices and URLs."),
+    signedOut: t("登录后可同步历史记录", "Sign in to sync history"),
     unavailable: t("需要在 Cloudflare 绑定 D1 数据库。", "Bind a Cloudflare D1 database to enable sync."),
     authError: t("请检查邮箱、密码或云端配置。", "Check the email, password, or cloud configuration."),
     syncError: t("本地内容仍然保留，请稍后重试。", "Local content is still kept. Try again later.")
@@ -2117,16 +2084,6 @@ function feedbackCenterPanel() {
   `;
 }
 
-function feedbackMiniItem(item) {
-  return `
-    <button class="feedback-mini-item" type="button" data-feedback-id="${escapeAttr(item.id)}">
-      <strong>${escapeHtml(item.title)}</strong>
-      <span>${escapeHtml(feedbackPreviewText(item.body))}</span>
-      <small>${escapeHtml(t(`${item.replyCount || 0} 条回复`, `${item.replyCount || 0} repl${(item.replyCount || 0) === 1 ? "y" : "ies"}`))}</small>
-    </button>
-  `;
-}
-
 function feedbackListItem(item) {
   return `
     <button class="feedback-item ${item.id === activeFeedbackId ? "active" : ""}" type="button" data-feedback-id="${escapeAttr(item.id)}">
@@ -2313,21 +2270,6 @@ function blockedBadge(safety) {
       ${escapeHtml(displayBilingual(safety.label || t("不通过", "Not Passed")))}
     </span>
   `;
-}
-
-function sidebarStat(iconName, label, value, detail) {
-  return `
-    <article class="sidebar-stat">
-      <div>${icon(iconName)}</div>
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value)}</strong>
-      <small>${escapeHtml(detail)}</small>
-    </article>
-  `;
-}
-
-function metric(label, value) {
-  return `<div class="metric"><strong>${value}</strong><span>${escapeHtml(label)}</span></div>`;
 }
 
 function emptyState(iconName, title, text, compact = false) {
