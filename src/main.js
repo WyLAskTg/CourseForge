@@ -124,7 +124,7 @@ function render() {
           <div class="brand-mark">${icon("brain")}</div>
           <div>
             <strong>CourseForge</strong>
-            ${bi("课程复习与测评工作台", "Course review and assessment workspace")}
+            ${bi("课程综合复习平台", "课程综合复习平台")}
           </div>
         </div>
 
@@ -257,9 +257,6 @@ function render() {
       </main>
 
       <aside class="memory-panel">
-        <div class="memory-heading">
-          ${icon("history")}<h2>${t("课程记忆", "Course Memory")}</h2>
-        </div>
         <section class="announcement-panel">
           <div class="memory-section-head">
             <div>
@@ -288,7 +285,7 @@ function render() {
         <section class="study-board">
           <div class="memory-section-head">
             <div>
-              <h3>${t("收藏与错题复习", "Favorites and review queue")}</h3>
+              <h3>${t("收藏与错题集", "Favorites and wrong questions")}</h3>
             </div>
           </div>
           <div class="study-board-metrics">
@@ -311,7 +308,7 @@ function render() {
               </div>
             </div>
             <div class="study-board-section">
-              <strong>${t("错题复习", "Review queue")}</strong>
+              <strong>${t("错题集", "Wrong questions")}</strong>
               <div class="study-link-list">
                 ${reviewQuestionRefs.length
                   ? reviewQuestionRefs.slice(0, 6).map(renderStudyLinkItem).join("")
