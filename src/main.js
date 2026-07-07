@@ -34,13 +34,6 @@ const STUDY_STATUS_OPTIONS = [
   { id: "mastered", zh: "会了", en: "Got It" }
 ];
 
-const taskOptions = [
-  { id: "knowledge", label: "知识点", enLabel: "Key Points", icon: "book-open", tone: "提纲", enTone: "Outline" },
-  { id: "pitfalls", label: "易错考点", enLabel: "Common Pitfalls", icon: "triangle-alert", tone: "复盘", enTone: "Review" },
-  { id: "quiz", label: "重点小测", enLabel: "Focused Quiz", icon: "clipboard-list", tone: "练习", enTone: "Practice" },
-  { id: "mock", label: "模拟考试", enLabel: "Mock Exam", icon: "graduation-cap", tone: "整卷", enTone: "Full Paper" }
-];
-
 const STOP_WORDS = new Set([
   "the", "and", "for", "with", "that", "this", "from", "are", "was", "were", "have", "has",
   "course", "notes", "slides", "lecture", "课程", "资料", "学生", "教师", "考试", "题目",
@@ -111,10 +104,11 @@ function render() {
   const corpus = getCorpus(courseDocuments);
   const safety = analyzeSafety(corpus);
   const activeGeneration = state.generations.find((generation) => generation.id === activeGenerationId) || courseGenerations[0];
-  const selectedTaskOption = taskOptions.find((option) => option.id === selectedTask) || taskOptions[0];
   const rootElement = document.getElementById("root");
   const hasCourse = Boolean(activeCourse);
   const usesAssessmentSettings = isAssessmentTask(selectedTask);
+  const taskMode = usesAssessmentSettings ? "assessment" : "outline";
+  const taskTitle = taskMode === "assessment" ? t("试题", "Questions") : t("知识提纲", "Knowledge Outline");
   const showingFeedback = workspaceMode === "feedback";
   const questionReferences = collectQuestionReferences(courseGenerations);
   const favoriteQuestionRefs = questionReferences.filter((item) => item.isFavorite);
@@ -180,7 +174,6 @@ function render() {
             <section class="panel upload-panel">
               <div class="panel-heading">
                 <div>
-                  <p class="eyebrow">${t("资料库", "Library")}</p>
                   <h2>${t("课程资料", "Course Materials")}</h2>
                 </div>
                 <label class="upload-button ${hasCourse ? "" : "disabled"}">
@@ -191,15 +184,14 @@ function render() {
               </div>
               ${parseMessage ? `<p class="parse-message">${escapeHtml(displayBilingual(parseMessage))}</p>` : ""}
               <div class="document-list">
-                ${hasCourse ? (courseDocuments.length ? courseDocuments.map(documentRow).join("") : emptyState("library-big", t("暂无资料", "No materials yet"), "PDF / DOCX / TXT", false)) : emptyState("folder-plus", t("请先创建课程", "Create a course first"), t("课程会用来保存资料和生成记录", "Courses keep materials and generation history organized"), false)}
+                ${hasCourse ? (courseDocuments.length ? courseDocuments.map(documentRow).join("") : emptyState("library-big", t("待上传", "Waiting for upload"), "", false)) : emptyState("folder-plus", t("请先创建课程", "Create a course first"), t("课程会用来保存资料和生成记录", "Courses keep materials and generation history organized"), false)}
               </div>
             </section>
 
             <section class="panel generator-panel">
               <div class="panel-heading">
                 <div>
-                  <p class="eyebrow">${t("生成配置", "Generation Setup")}</p>
-                  <h2>${bi(selectedTaskOption.label, selectedTaskOption.enLabel)}</h2>
+                  <h2>${taskTitle}</h2>
                 </div>
                 <button class="primary-action" id="generateBtn" type="button" ${isGenerating || !hasCourse ? "disabled" : ""}>
                   ${icon(isGenerating ? "loader-2" : "sparkles", isGenerating ? "spin" : "")}<span>${isGenerating ? t("生成中", "Generating") : t("生成", "Generate")}</span>
@@ -207,18 +199,25 @@ function render() {
               </div>
 
               <div class="task-grid">
-                ${taskOptions.map(taskButton).join("")}
+                <button type="button" class="task-button ${taskMode === "outline" ? "selected" : ""}" data-task-mode="outline">
+                  ${icon("book-open")}
+                  <span><strong>${t("知识提纲", "Knowledge Outline")}</strong><small>${t("提纲", "Outline")}</small></span>
+                </button>
+                <button type="button" class="task-button ${taskMode === "assessment" ? "selected" : ""}" data-task-mode="assessment">
+                  ${icon("clipboard-list")}
+                  <span><strong>${t("试题", "Questions")}</strong><small>${t("普通小测或模拟考试", "Quiz or mock exam")}</small></span>
+                </button>
               </div>
 
-              <div class="settings-grid ${usesAssessmentSettings ? "" : "knowledge-settings"}">
-                <label>
-                  <span>${t("身份", "Role")}</span>
-                  <select id="audienceSelect">
-                    ${option("学生", audience, t("学生", "Student"))}
-                    ${option("教师", audience, t("教师", "Teacher"))}
-                  </select>
-                </label>
-                ${usesAssessmentSettings ? `
+              ${usesAssessmentSettings ? `
+                <div class="settings-grid">
+                  <label>
+                    <span>${t("类型", "Type")}</span>
+                    <select id="questionTypeSelect">
+                      ${option("quiz", selectedTask, t("普通小测", "Regular Quiz"))}
+                      ${option("mock", selectedTask, t("模拟考试", "Mock Exam"))}
+                    </select>
+                  </label>
                   <label>
                     <span>${t("难度", "Difficulty")}</span>
                     <select id="difficultySelect">
@@ -231,8 +230,8 @@ function render() {
                     <span>${t("题量", "Count")}</span>
                     <input id="questionCount" type="number" min="3" max="12" value="${questionCount}" />
                   </label>
-                ` : ""}
-              </div>
+                </div>
+              ` : ""}
 
               <label class="requirement-box">
                 <span>${t("本次要求", "Current request")}</span>
@@ -358,8 +357,9 @@ function attachEvents(activeGeneration) {
   document.getElementById("generateBtn")?.addEventListener("click", handleGenerate);
   document.getElementById("copyResultBtn")?.addEventListener("click", () => copyGeneration(activeGeneration));
   document.getElementById("downloadResultBtn")?.addEventListener("click", () => downloadGeneration(activeGeneration));
-  document.getElementById("audienceSelect")?.addEventListener("change", (event) => {
-    audience = event.target.value;
+  document.getElementById("questionTypeSelect")?.addEventListener("change", (event) => {
+    selectedTask = event.target.value === "mock" ? "mock" : "quiz";
+    render();
   });
   document.getElementById("difficultySelect")?.addEventListener("change", (event) => {
     difficulty = event.target.value;
@@ -400,9 +400,9 @@ function attachEvents(activeGeneration) {
     });
   });
 
-  document.querySelectorAll("[data-task-id]").forEach((button) => {
+  document.querySelectorAll("[data-task-mode]").forEach((button) => {
     button.addEventListener("click", () => {
-      selectedTask = button.dataset.taskId;
+      selectedTask = button.dataset.taskMode === "assessment" ? (isAssessmentTask(selectedTask) ? selectedTask : "quiz") : "knowledge";
       render();
     });
   });
@@ -1974,15 +1974,6 @@ function documentRow(document) {
         ${icon("trash-2")}
       </button>
     </article>
-  `;
-}
-
-function taskButton(option) {
-  return `
-    <button type="button" class="task-button ${selectedTask === option.id ? "selected" : ""}" data-task-id="${escapeAttr(option.id)}">
-      ${icon(option.icon)}
-      <span><strong>${escapeHtml(biText(option.label, option.enLabel))}</strong><small>${escapeHtml(biText(option.tone, option.enTone))}</small></span>
-    </button>
   `;
 }
 
