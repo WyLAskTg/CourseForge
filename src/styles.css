@@ -236,20 +236,6 @@ button:disabled {
   margin-top: 28px;
 }
 
-.form-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.form-title select {
-  width: 112px;
-  height: 34px;
-  padding: 0 8px;
-}
-
 .course-form label,
 .settings-grid label span,
 .requirement-box span {
@@ -257,12 +243,6 @@ button:disabled {
   display: block;
   font-size: 12px;
   font-weight: 800;
-}
-
-.input-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
 }
 
 input,
@@ -325,8 +305,63 @@ textarea:focus {
   font-weight: 900;
 }
 
+.create-course-button.full-width {
+  width: 100%;
+}
+
 .create-course-button:hover {
   background: var(--teal-dark);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.34);
+}
+
+.modal-card {
+  width: min(440px, 100%);
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.modal-heading,
+.modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-heading h2 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+.modal-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.modal-form label span {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.modal-actions {
+  justify-content: flex-end;
 }
 
 input.needs-value {

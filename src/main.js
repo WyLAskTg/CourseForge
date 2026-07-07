@@ -95,6 +95,7 @@ let feedbackViewer = { authenticated: false, canReply: false, email: "" };
 let searchQuery = "";
 let activeQuestionKey = "";
 let pendingScrollTarget = "";
+let isCourseDialogOpen = false;
 
 render();
 initializeCloudSession();
@@ -123,6 +124,7 @@ function render() {
   window.MathJax?.typesetClear?.([rootElement]);
   rootElement.innerHTML = `
     <div class="app-shell">
+      ${courseDialog()}
       <aside class="sidebar">
         <div class="brand">
           <div class="brand-mark">${icon("brain")}</div>
@@ -134,21 +136,11 @@ function render() {
 
         ${authPanel()}
 
-        <form class="course-form" id="courseForm">
-          <div class="form-title">
-            <label for="courseName">${bi("课程名称", "Course name")}</label>
-            <select id="courseAudience" aria-label="课程身份">
-              ${option("学生", audience, t("学生", "Student"))}
-              ${option("教师", audience, t("教师", "Teacher"))}
-            </select>
-          </div>
-          <div class="input-row">
-            <input id="courseName" placeholder="${t("例如 MATH237", "Example: MATH237")}" />
-            <button class="create-course-button" type="submit" aria-label="${t("创建课程", "Create course")}">
-              ${icon("folder-plus")}<span>${t("创建", "Create")}</span>
-            </button>
-          </div>
-        </form>
+        <div class="course-form">
+          <button class="create-course-button full-width" id="openCourseDialogBtn" type="button">
+            ${icon("folder-plus")}<span>${t("创建课程", "Create Course")}</span>
+          </button>
+        </div>
 
         <div class="course-list" aria-label="${t("课程列表", "Course list")}">
           ${state.courses.length ? state.courses.map((course) => courseButton(course, activeCourse?.id)).join("") : emptyState("folder-plus", t("还没有课程", "No courses yet"), t("先创建一个课程分类", "Create a course category first"), true)}
@@ -346,18 +338,21 @@ function attachEvents(activeGeneration) {
   document.getElementById("authForm")?.addEventListener("submit", handleAuthSubmit);
   document.getElementById("logoutBtn")?.addEventListener("click", handleLogout);
   document.getElementById("syncNowBtn")?.addEventListener("click", () => pushCloudState({ renderAfter: true }));
-  document.getElementById("courseForm")?.addEventListener("submit", handleCreateCourse);
+  document.getElementById("openCourseDialogBtn")?.addEventListener("click", openCourseDialog);
+  document.getElementById("courseDialogForm")?.addEventListener("submit", handleCreateCourse);
+  document.getElementById("closeCourseDialogBtn")?.addEventListener("click", closeCourseDialog);
+  document.getElementById("cancelCourseDialogBtn")?.addEventListener("click", closeCourseDialog);
+  document.getElementById("courseDialogBackdrop")?.addEventListener("click", (event) => {
+    if (event.target.id === "courseDialogBackdrop") closeCourseDialog();
+  });
   document.getElementById("feedbackCenterBtn")?.addEventListener("click", toggleFeedbackCenter);
-  document.getElementById("courseName")?.addEventListener("input", (event) => {
+  document.getElementById("courseDialogName")?.addEventListener("input", (event) => {
     event.target.classList.remove("needs-value");
   });
   document.getElementById("languageSelect")?.addEventListener("change", (event) => {
     uiLanguage = event.target.value === "en" ? "en" : "zh";
     localStorage.setItem(UI_LANGUAGE_KEY, uiLanguage);
     render();
-  });
-  document.getElementById("courseAudience")?.addEventListener("change", (event) => {
-    audience = event.target.value;
   });
   document.getElementById("fileInput")?.addEventListener("change", handleFilesSelected);
   document.getElementById("generateBtn")?.addEventListener("click", handleGenerate);
@@ -969,13 +964,23 @@ async function apiJson(path, { method = "GET", body } = {}) {
   return data;
 }
 
+function openCourseDialog() {
+  isCourseDialogOpen = true;
+  render();
+}
+
+function closeCourseDialog() {
+  isCourseDialogOpen = false;
+  render();
+}
+
 function handleCreateCourse(event) {
   event.preventDefault();
-  const input = document.getElementById("courseName");
+  const input = document.getElementById("courseDialogName");
   const name = input.value.trim();
   if (!name) {
     input.classList.add("needs-value");
-    input.placeholder = t("请先输入课程名称", "Enter a course name first");
+    input.placeholder = t("请输入课程主题或代码", "Enter a course topic or code");
     input.focus();
     return;
   }
@@ -983,7 +988,7 @@ function handleCreateCourse(event) {
   const nextCourse = {
     id: crypto.randomUUID(),
     name,
-    audience,
+    audience: "学生",
     color: pickCourseColor(state.courses.length),
     createdAt: new Date().toISOString()
   };
@@ -991,7 +996,7 @@ function handleCreateCourse(event) {
   persist({ ...state, courses: [nextCourse, ...state.courses] });
   activeCourseId = nextCourse.id;
   activeGenerationId = "";
-  input.value = "";
+  isCourseDialogOpen = false;
   render();
 }
 
@@ -1825,6 +1830,38 @@ function removeUnusedSeedCourses(value) {
   };
 }
 
+function courseDialog() {
+  if (!isCourseDialogOpen) return "";
+
+  return `
+    <div class="modal-backdrop" id="courseDialogBackdrop" role="presentation">
+      <section class="modal-card course-dialog" role="dialog" aria-modal="true" aria-labelledby="courseDialogTitle">
+        <div class="modal-heading">
+          <div>
+            <p class="eyebrow">${t("新课程", "New course")}</p>
+            <h2 id="courseDialogTitle">${t("创建课程", "Create Course")}</h2>
+          </div>
+          <button class="icon-button quiet" id="closeCourseDialogBtn" type="button" aria-label="${t("关闭", "Close")}">
+            ${icon("x")}
+          </button>
+        </div>
+        <form class="modal-form" id="courseDialogForm">
+          <label>
+            <span>${t("课程主题或代码", "Course topic or code")}</span>
+            <input id="courseDialogName" autocomplete="off" autofocus placeholder="${t("例如 MATH237 或 Linear Algebra", "Example: MATH237 or Linear Algebra")}" />
+          </label>
+          <div class="modal-actions">
+            <button class="secondary-action" id="cancelCourseDialogBtn" type="button">${t("取消", "Cancel")}</button>
+            <button class="create-course-button" type="submit">
+              ${icon("folder-plus")}<span>${t("创建", "Create")}</span>
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  `;
+}
+
 function authPanel() {
   const statusText = cloudStatusText();
   const detail = cloudStatusDetail();
@@ -1910,7 +1947,7 @@ function courseButton(course, activeId) {
         <span class="course-color" style="background-color: ${escapeAttr(course.color)}"></span>
         <span>
           <strong>${escapeHtml(course.name)}</strong>
-          <small>${escapeHtml(roleLabel(course.audience))} · ${t(`${docCount} 份资料`, `${docCount} material(s)`)}</small>
+          <small>${t(`${docCount} 份资料`, `${docCount} material(s)`)}</small>
         </span>
         ${icon("chevron-right")}
       </button>
