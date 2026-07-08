@@ -57,7 +57,7 @@ button:disabled {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 270px minmax(0, 1fr) 300px;
+  grid-template-columns: minmax(0, 1fr) 300px;
   min-height: 100vh;
   height: 100vh;
   overflow: hidden;
@@ -370,6 +370,23 @@ textarea:focus {
   justify-content: flex-end;
 }
 
+.auth-dialog-status {
+  margin: -4px 0 0;
+  padding: 10px 12px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.auth-dialog-status.error {
+  color: var(--amber);
+  border-color: rgba(180, 83, 9, 0.28);
+  background: var(--amber-soft);
+}
+
 input.needs-value {
   border-color: rgba(190, 18, 60, 0.55);
   background: #fff8fa;
@@ -391,6 +408,11 @@ input.needs-value::placeholder {
 .icon-button.quiet:hover {
   color: var(--red);
   background: var(--red-soft);
+}
+
+.icon-button.quiet.neutral:hover {
+  color: var(--teal);
+  background: var(--teal-soft);
 }
 
 .course-list,
@@ -463,6 +485,38 @@ input.needs-value::placeholder {
   justify-content: space-between;
   gap: 18px;
   margin-bottom: 18px;
+}
+
+.course-heading {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.course-switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.course-switcher select {
+  width: min(420px, 42vw);
+  min-width: 220px;
+  height: 44px;
+  color: var(--text);
+  font-size: 26px;
+  font-weight: 900;
+}
+
+.course-switcher .create-course-button,
+.course-switcher .icon-button.quiet {
+  flex: 0 0 auto;
+}
+
+.course-switcher .icon-button.quiet {
+  border: 1px solid var(--line);
+  background: white;
 }
 
 .header-actions {
@@ -1119,6 +1173,7 @@ h2 {
 }
 
 .history-entry {
+  grid-template-columns: minmax(0, 1fr) 34px 34px;
   border: 1px solid var(--line);
   background: white;
 }
@@ -1651,13 +1706,13 @@ h2 {
   }
 }
 
-@media (max-width: 1440px) {
+@media (max-width: 1180px) {
   body {
     overflow: auto;
   }
 
   .app-shell {
-    grid-template-columns: 260px minmax(0, 1fr);
+    grid-template-columns: 1fr;
     height: auto;
     min-height: 100vh;
     overflow: visible;
@@ -1713,6 +1768,20 @@ h2 {
 
   .header-actions {
     justify-content: flex-start;
+  }
+
+  .course-heading,
+  .course-switcher,
+  .course-switcher select {
+    width: 100%;
+  }
+
+  .course-switcher {
+    flex-wrap: wrap;
+  }
+
+  .course-switcher select {
+    min-width: 0;
   }
 
   .main-grid {

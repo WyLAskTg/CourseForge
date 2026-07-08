@@ -93,6 +93,8 @@ let activeStudyCollectionId = "";
 let pendingScrollTarget = "";
 let isCourseDialogOpen = false;
 let studyCollectionDialogType = "";
+let renameGenerationId = "";
+let isAuthDialogOpen = false;
 
 render();
 initializeCloudSession();
@@ -120,43 +122,42 @@ function render() {
   const wrongCollections = courseStudyCollections.filter((collection) => collection.type === "wrong");
   const activeStudyCollection = courseStudyCollections.find((collection) => collection.id === activeStudyCollectionId) || null;
   const activeStudyCollectionRefs = activeStudyCollection ? resolveStudyCollectionItems(activeStudyCollection, questionReferences) : [];
-  const searchResults = buildWorkspaceSearchResults(searchQuery, courseDocuments, courseGenerations, questionReferences);
+  const searchResults = buildWorkspaceSearchResults(searchQuery, courseDocuments, courseGenerations);
 
   window.MathJax?.typesetClear?.([rootElement]);
   rootElement.innerHTML = `
     <div class="app-shell">
       ${courseDialog()}
       ${studyCollectionDialog()}
-      <aside class="sidebar">
-        <div class="brand">
-          <div class="brand-mark">${icon("brain")}</div>
-          <div>
-            <strong>CourseForge</strong>
-            ${bi("课程综合复习平台", "课程综合复习平台")}
-          </div>
-        </div>
-
-        ${authPanel()}
-
-        <div class="course-form">
-          <button class="create-course-button full-width" id="openCourseDialogBtn" type="button">
-            ${icon("folder-plus")}<span>${t("创建课程", "Create Course")}</span>
-          </button>
-        </div>
-
-        <div class="course-list" aria-label="${t("课程列表", "Course list")}">
-          ${state.courses.length ? state.courses.map((course) => courseButton(course, activeCourse?.id)).join("") : emptyState("folder-plus", t("还没有课程", "No courses yet"), t("先创建一个课程分类", "Create a course category first"), true)}
-        </div>
-
-      </aside>
+      ${renameGenerationDialog()}
+      ${authDialog()}
 
       <main class="workspace">
         <header class="topbar">
-          <div>
+          <div class="course-heading">
             <p class="eyebrow">${t("当前课程", "Current Course")}</p>
-            <h1>${escapeHtml(activeCourse?.name || t("创建你的第一门课程", "Create your first course"))}</h1>
+            <div class="course-switcher">
+              <select id="courseSelect" aria-label="${t("选择课程", "Select course")}" ${state.courses.length ? "" : "disabled"}>
+                ${state.courses.length
+                  ? state.courses.map((course) => option(course.id, activeCourse?.id, course.name)).join("")
+                  : `<option value="">${t("请先创建课程", "Create a course first")}</option>`}
+              </select>
+              <button class="create-course-button" id="openCourseDialogBtn" type="button">
+                ${icon("folder-plus")}<span>${t("创建", "Create")}</span>
+              </button>
+              ${activeCourse ? `
+                <button class="icon-button quiet" type="button" data-delete-course="${escapeAttr(activeCourse.id)}" aria-label="${t("删除当前课程", "Delete current course")}">
+                  ${icon("trash-2")}
+                </button>
+              ` : ""}
+            </div>
           </div>
           <div class="header-actions">
+            ${currentUser ? "" : `
+              <button class="secondary-action" id="openAuthDialogBtn" type="button">
+                ${icon("log-in")}<span>${t("登录", "Log in")}</span>
+              </button>
+            `}
             <label class="language-control">
               <span>${t("语言", "Language")}</span>
               <select id="languageSelect" aria-label="${t("界面语言", "Interface language")}">
@@ -166,12 +167,6 @@ function render() {
             </label>
             <button class="secondary-action ${showingFeedback ? "active" : ""}" id="feedbackCenterBtn" type="button">
               ${icon(showingFeedback ? "book-open" : "messages-square")}<span>${showingFeedback ? t("返回学习区", "Back to Study") : t("意见反馈", "Feedback")}</span>
-            </button>
-            <button class="secondary-action" id="copyResultBtn" type="button" ${activeGeneration ? "" : "disabled"}>
-              ${icon("copy")}<span>${t("复制结果", "Copy")}</span>
-            </button>
-            <button class="secondary-action" id="downloadResultBtn" type="button" ${activeGeneration ? "" : "disabled"}>
-              ${icon("download")}<span>${t("导出", "Export")}</span>
             </button>
             ${blockedBadge(safety)}
           </div>
@@ -357,6 +352,12 @@ function attachEvents(activeGeneration) {
   document.getElementById("authForm")?.addEventListener("submit", handleAuthSubmit);
   document.getElementById("logoutBtn")?.addEventListener("click", handleLogout);
   document.getElementById("syncNowBtn")?.addEventListener("click", () => pushCloudState({ renderAfter: true }));
+  document.getElementById("openAuthDialogBtn")?.addEventListener("click", openAuthDialog);
+  document.getElementById("closeAuthDialogBtn")?.addEventListener("click", closeAuthDialog);
+  document.getElementById("cancelAuthDialogBtn")?.addEventListener("click", closeAuthDialog);
+  document.getElementById("authDialogBackdrop")?.addEventListener("click", (event) => {
+    if (event.target.id === "authDialogBackdrop") closeAuthDialog();
+  });
   document.getElementById("openCourseDialogBtn")?.addEventListener("click", openCourseDialog);
   document.getElementById("courseDialogForm")?.addEventListener("submit", handleCreateCourse);
   document.getElementById("closeCourseDialogBtn")?.addEventListener("click", closeCourseDialog);
@@ -368,6 +369,16 @@ function attachEvents(activeGeneration) {
   document.getElementById("courseDialogName")?.addEventListener("input", (event) => {
     event.target.classList.remove("needs-value");
   });
+  document.getElementById("courseSelect")?.addEventListener("change", (event) => {
+    const courseId = event.target.value;
+    if (!courseId || courseId === activeCourseId) return;
+    activeCourseId = courseId;
+    activeGenerationId = "";
+    activeQuestionKey = "";
+    activeStudyCollectionId = "";
+    audience = getActiveCourse()?.audience || "学生";
+    render();
+  });
   document.getElementById("languageSelect")?.addEventListener("change", (event) => {
     uiLanguage = event.target.value === "en" ? "en" : "zh";
     localStorage.setItem(UI_LANGUAGE_KEY, uiLanguage);
@@ -375,8 +386,6 @@ function attachEvents(activeGeneration) {
   });
   document.getElementById("fileInput")?.addEventListener("change", handleFilesSelected);
   document.getElementById("generateBtn")?.addEventListener("click", handleGenerate);
-  document.getElementById("copyResultBtn")?.addEventListener("click", () => copyGeneration(activeGeneration));
-  document.getElementById("downloadResultBtn")?.addEventListener("click", () => downloadGeneration(activeGeneration));
   document.getElementById("questionTypeSelect")?.addEventListener("change", (event) => {
     selectedTask = event.target.value === "mock" ? "mock" : "quiz";
     render();
@@ -455,6 +464,12 @@ function attachEvents(activeGeneration) {
     });
   });
 
+  document.querySelectorAll("[data-rename-generation]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openRenameGenerationDialog(button.dataset.renameGeneration);
+    });
+  });
+
   document.querySelectorAll("[data-toggle-favorite]").forEach((button) => {
     button.addEventListener("click", () => {
       toggleQuestionFavorite(button.dataset.generationId, Number(button.dataset.itemIndex));
@@ -480,6 +495,16 @@ function attachEvents(activeGeneration) {
     if (event.target.id === "studyCollectionDialogBackdrop") closeStudyCollectionDialog();
   });
   document.getElementById("studyCollectionDialogName")?.addEventListener("input", (event) => {
+    event.target.classList.remove("needs-value");
+  });
+
+  document.getElementById("renameGenerationDialogForm")?.addEventListener("submit", handleRenameGeneration);
+  document.getElementById("closeRenameGenerationDialogBtn")?.addEventListener("click", closeRenameGenerationDialog);
+  document.getElementById("cancelRenameGenerationDialogBtn")?.addEventListener("click", closeRenameGenerationDialog);
+  document.getElementById("renameGenerationDialogBackdrop")?.addEventListener("click", (event) => {
+    if (event.target.id === "renameGenerationDialogBackdrop") closeRenameGenerationDialog();
+  });
+  document.getElementById("renameGenerationDialogName")?.addEventListener("input", (event) => {
     event.target.classList.remove("needs-value");
   });
 
@@ -597,6 +622,7 @@ async function handleAuthSubmit(event) {
     });
 
     currentUser = data.user;
+    isAuthDialogOpen = false;
     cloudSyncStatus = { level: "syncing", code: "syncing" };
     render();
     await pullCloudState({ mergeLocal: true });
@@ -1029,7 +1055,7 @@ function queueScrollToPendingTarget() {
   });
 }
 
-function buildWorkspaceSearchResults(query, courseDocuments, courseGenerations, questionReferences) {
+function buildWorkspaceSearchResults(query, courseDocuments, courseGenerations) {
   const normalizedQuery = String(query || "").trim().toLowerCase();
   if (!normalizedQuery) return [];
 
@@ -1059,21 +1085,6 @@ function buildWorkspaceSearchResults(query, courseDocuments, courseGenerations, 
       preview: plainTextPreview(generation.output?.items?.[0]?.body || ""),
       meta: formatDate(generation.createdAt),
       generationId: generation.id
-    });
-    if (results.length >= SEARCH_RESULT_LIMIT) return results;
-  }
-
-  for (const reference of questionReferences) {
-    const haystack = `${reference.title} ${reference.preview} ${reference.generationTitle}`.toLowerCase();
-    if (!haystack.includes(normalizedQuery)) continue;
-    results.push({
-      id: `question:${reference.questionKey}`,
-      kind: "question",
-      title: reference.title,
-      preview: reference.preview,
-      meta: buildStudyItemMeta(reference),
-      generationId: reference.generationId,
-      questionKey: reference.questionKey
     });
     if (results.length >= SEARCH_RESULT_LIMIT) return results;
   }
@@ -1115,6 +1126,17 @@ async function apiJson(path, { method = "GET", body } = {}) {
   }
 
   return data;
+}
+
+function openAuthDialog() {
+  if (currentUser) return;
+  isAuthDialogOpen = true;
+  render();
+}
+
+function closeAuthDialog() {
+  isAuthDialogOpen = false;
+  render();
 }
 
 function openCourseDialog() {
@@ -1212,6 +1234,42 @@ function deleteGeneration(generationId) {
     activeStudyCollectionId = "";
   }
   visibleAnswerKeys = new Set(Array.from(visibleAnswerKeys).filter((key) => !key.startsWith(`${generationId}:`)));
+  render();
+}
+
+function openRenameGenerationDialog(generationId) {
+  if (!state.generations.some((generation) => generation.id === generationId)) return;
+  renameGenerationId = generationId;
+  render();
+}
+
+function closeRenameGenerationDialog() {
+  renameGenerationId = "";
+  render();
+}
+
+function handleRenameGeneration(event) {
+  event.preventDefault();
+  const generation = state.generations.find((item) => item.id === renameGenerationId);
+  if (!generation) return;
+
+  const input = document.getElementById("renameGenerationDialogName");
+  const title = input.value.trim();
+  if (!title) {
+    input.classList.add("needs-value");
+    input.placeholder = t("请输入新的生成记录名称", "Enter a new output name");
+    input.focus();
+    return;
+  }
+
+  persist({
+    ...state,
+    generations: state.generations.map((item) => (
+      item.id === renameGenerationId ? { ...item, title } : item
+    ))
+  });
+  activeGenerationId = renameGenerationId;
+  renameGenerationId = "";
   render();
 }
 
@@ -2123,6 +2181,84 @@ function studyCollectionDialog() {
   `;
 }
 
+function renameGenerationDialog() {
+  if (!renameGenerationId) return "";
+
+  const generation = state.generations.find((item) => item.id === renameGenerationId);
+  if (!generation) return "";
+
+  return `
+    <div class="modal-backdrop" id="renameGenerationDialogBackdrop" role="presentation">
+      <section class="modal-card course-dialog" role="dialog" aria-modal="true" aria-labelledby="renameGenerationDialogTitle">
+        <div class="modal-heading">
+          <div>
+            <p class="eyebrow">${t("生成记录", "Generated output")}</p>
+            <h2 id="renameGenerationDialogTitle">${t("重命名", "Rename")}</h2>
+          </div>
+          <button class="icon-button quiet" id="closeRenameGenerationDialogBtn" type="button" aria-label="${t("关闭", "Close")}">
+            ${icon("x")}
+          </button>
+        </div>
+        <form class="modal-form" id="renameGenerationDialogForm">
+          <label>
+            <span>${t("生成记录名称", "Output name")}</span>
+            <input id="renameGenerationDialogName" autocomplete="off" autofocus value="${escapeAttr(displayBilingual(generation.title))}" />
+          </label>
+          <div class="modal-actions">
+            <button class="secondary-action" id="cancelRenameGenerationDialogBtn" type="button">${t("取消", "Cancel")}</button>
+            <button class="create-course-button" type="submit">
+              ${icon("check")}<span>${t("保存", "Save")}</span>
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  `;
+}
+
+function authDialog() {
+  if (!isAuthDialogOpen || currentUser) return "";
+
+  const statusText = cloudStatusText();
+  const detail = cloudStatusDetail();
+  const isBusy = ["registering", "loggingIn", "syncing"].includes(cloudSyncStatus.code);
+  const isError = cloudSyncStatus.code === "authError" || cloudSyncStatus.code === "syncError" || cloudSyncStatus.code === "unavailable";
+
+  return `
+    <div class="modal-backdrop" id="authDialogBackdrop" role="presentation">
+      <section class="modal-card course-dialog" role="dialog" aria-modal="true" aria-labelledby="authDialogTitle">
+        <div class="modal-heading">
+          <div>
+            <p class="eyebrow">${t("账号", "Account")}</p>
+            <h2 id="authDialogTitle">${t("登录", "Log in")}</h2>
+          </div>
+          <button class="icon-button quiet" id="closeAuthDialogBtn" type="button" aria-label="${t("关闭", "Close")}">
+            ${icon("x")}
+          </button>
+        </div>
+        <form class="modal-form auth-dialog-form" id="authForm">
+          <label>
+            <span>${t("邮箱", "Email")}</span>
+            <input id="authEmail" type="email" autocomplete="email" autofocus />
+          </label>
+          <label>
+            <span>${t("密码", "Password")}</span>
+            <input id="authPassword" type="password" autocomplete="current-password" />
+          </label>
+          ${detail ? `<p class="auth-dialog-status ${isError ? "error" : ""}">${escapeHtml(statusText ? `${statusText}：${detail}` : detail)}</p>` : ""}
+          <div class="modal-actions">
+            <button class="secondary-action" id="cancelAuthDialogBtn" type="button">${t("取消", "Cancel")}</button>
+            <button class="secondary-action" type="submit" data-auth-action="register" ${isBusy ? "disabled" : ""}>${t("注册", "Sign up")}</button>
+            <button class="create-course-button" type="submit" data-auth-action="login" ${isBusy ? "disabled" : ""}>
+              ${icon(isBusy ? "loader-2" : "log-in", isBusy ? "spin" : "")}<span>${isBusy ? t("处理中", "Working") : t("登录", "Log in")}</span>
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  `;
+}
+
 function authPanel() {
   const statusText = cloudStatusText();
   const detail = cloudStatusDetail();
@@ -2309,6 +2445,9 @@ function historyItem(generation, activeId) {
         <span>${escapeHtml(displayBilingual(generation.title))}</span>
         <small>${formatDate(generation.createdAt)}</small>
       </button>
+      <button class="icon-button quiet neutral" type="button" data-rename-generation="${escapeAttr(generation.id)}" aria-label="${t("重命名生成记录", "Rename generated output")}">
+        ${icon("pencil")}
+      </button>
       <button class="icon-button quiet" type="button" data-delete-generation="${escapeAttr(generation.id)}" aria-label="${t("删除生成记录", "Delete generated output")}">
         ${icon("trash-2")}
       </button>
@@ -2476,7 +2615,7 @@ function renderAnnouncementItem(item) {
 
 function renderSearchResults(query, results) {
   if (!query.trim()) {
-    return `<p class="feedback-inline-status">${escapeHtml(t("输入关键词来检索历史生成记录。", "Enter keywords to search generation history."))}</p>`;
+    return `<p class="feedback-inline-status">${escapeHtml(t("输入关键词来检索资料和历史生成记录。", "Enter keywords to search materials and generation history."))}</p>`;
   }
 
   if (!results.length) {
@@ -2507,13 +2646,7 @@ function renderSearchResultItem(item) {
     `;
   }
 
-  return `
-    <button class="search-result-item" type="button" data-open-question="1" data-generation-id="${escapeAttr(item.generationId)}" data-question-key="${escapeAttr(item.questionKey)}">
-      <strong>${escapeHtml(item.title)}</strong>
-      <span>${escapeHtml(item.meta)}</span>
-      <small>${escapeHtml(item.preview)}</small>
-    </button>
-  `;
+  return "";
 }
 
 function renderStudyLinkItem(item) {
