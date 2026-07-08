@@ -448,10 +448,12 @@ input.needs-value::placeholder {
 }
 
 .workspace {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   height: 100vh;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 24px;
 }
 
@@ -512,12 +514,14 @@ h2 {
   display: grid;
   grid-template-columns: minmax(320px, 0.82fr) minmax(380px, 1.18fr);
   gap: 18px;
+  min-height: 0;
 }
 
 .main-grid > *,
 .panel,
 .left-column {
   min-width: 0;
+  min-height: 0;
 }
 
 .left-column {
@@ -706,9 +710,9 @@ h2 {
 .output-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  height: calc(100vh - 116px);
-  max-height: calc(100vh - 116px);
-  min-height: 520px;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
   min-width: 0;
   overflow: hidden;
 }
