@@ -134,22 +134,11 @@ function render() {
 
       <main class="workspace">
         <header class="topbar">
-          <div class="course-heading">
-            <p class="eyebrow">${t("当前课程", "Current Course")}</p>
-            <div class="course-switcher">
-              <select id="courseSelect" aria-label="${t("选择课程", "Select course")}" ${state.courses.length ? "" : "disabled"}>
-                ${state.courses.length
-                  ? state.courses.map((course) => option(course.id, activeCourse?.id, course.name)).join("")
-                  : `<option value="">${t("请先创建课程", "Create a course first")}</option>`}
-              </select>
-              <button class="create-course-button" id="openCourseDialogBtn" type="button">
-                ${icon("folder-plus")}<span>${t("创建", "Create")}</span>
-              </button>
-              ${activeCourse ? `
-                <button class="icon-button quiet" type="button" data-delete-course="${escapeAttr(activeCourse.id)}" aria-label="${t("删除当前课程", "Delete current course")}">
-                  ${icon("trash-2")}
-                </button>
-              ` : ""}
+          <div class="brand topbar-brand">
+            <div class="brand-mark">${icon("brain")}</div>
+            <div>
+              <strong>CourseForge</strong>
+              ${bi("课程综合复习平台", "课程综合复习平台")}
             </div>
           </div>
           <div class="header-actions">
@@ -174,6 +163,25 @@ function render() {
 
         <section class="main-grid">
           <div class="left-column">
+            <div class="course-heading">
+              <p class="eyebrow">${t("当前课程", "Current Course")}</p>
+              <div class="course-switcher">
+                <select id="courseSelect" aria-label="${t("选择课程", "Select course")}" ${state.courses.length ? "" : "disabled"}>
+                  ${state.courses.length
+                    ? state.courses.map((course) => option(course.id, activeCourse?.id, course.name)).join("")
+                    : `<option value="">${t("请先创建课程", "Create a course first")}</option>`}
+                </select>
+                <button class="create-course-button" id="openCourseDialogBtn" type="button">
+                  ${icon("folder-plus")}<span>${t("创建", "Create")}</span>
+                </button>
+                ${activeCourse ? `
+                  <button class="icon-button quiet" type="button" data-delete-course="${escapeAttr(activeCourse.id)}" aria-label="${t("删除当前课程", "Delete current course")}">
+                    ${icon("trash-2")}
+                  </button>
+                ` : ""}
+              </div>
+            </div>
+
             <section class="panel upload-panel">
               <div class="panel-heading">
                 <div>

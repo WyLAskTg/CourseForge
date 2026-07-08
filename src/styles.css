@@ -487,6 +487,10 @@ input.needs-value::placeholder {
   margin-bottom: 18px;
 }
 
+.topbar-brand {
+  min-width: 220px;
+}
+
 .course-heading {
   display: grid;
   gap: 6px;
@@ -501,7 +505,8 @@ input.needs-value::placeholder {
 }
 
 .course-switcher select {
-  width: min(420px, 42vw);
+  flex: 1 1 auto;
+  width: min(420px, 100%);
   min-width: 220px;
   height: 44px;
   color: var(--text);
