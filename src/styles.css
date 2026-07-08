@@ -691,17 +691,35 @@ h2 {
 }
 
 .output-panel {
-  min-height: calc(100vh - 210px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: calc(100vh - 116px);
+  max-height: calc(100vh - 116px);
+  min-height: 520px;
   min-width: 0;
   overflow: hidden;
 }
 
 .output-heading {
-  position: sticky;
-  top: 0;
   z-index: 1;
   padding-bottom: 12px;
   background: white;
+}
+
+.output-panel > .generated-stack,
+.output-panel > .empty-state {
+  min-height: 0;
+}
+
+.output-panel > .generated-stack {
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  overscroll-behavior: contain;
+}
+
+.output-panel > .empty-state {
+  height: 100%;
 }
 
 .status-badge {
@@ -1670,7 +1688,14 @@ h2 {
   }
 
   .output-panel {
+    height: auto;
+    max-height: none;
     min-height: auto;
+  }
+
+  .output-panel > .generated-stack {
+    overflow: visible;
+    padding-right: 0;
   }
 
   .feedback-hub {

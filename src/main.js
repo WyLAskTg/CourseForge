@@ -92,6 +92,7 @@ let activeQuestionKey = "";
 let activeStudyCollectionId = "";
 let pendingScrollTarget = "";
 let isCourseDialogOpen = false;
+let studyCollectionDialogType = "";
 
 render();
 initializeCloudSession();
@@ -114,8 +115,6 @@ function render() {
   const taskTitle = t("生成内容", "Generation");
   const showingFeedback = workspaceMode === "feedback";
   const questionReferences = collectQuestionReferences(courseGenerations);
-  const favoriteQuestionRefs = questionReferences.filter((item) => item.isFavorite);
-  const reviewQuestionRefs = questionReferences.filter((item) => ["review", "stuck"].includes(item.studyStatus));
   const courseStudyCollections = getCourseStudyCollections(activeCourse?.id);
   const favoriteCollections = courseStudyCollections.filter((collection) => collection.type === "favorite");
   const wrongCollections = courseStudyCollections.filter((collection) => collection.type === "wrong");
@@ -127,6 +126,7 @@ function render() {
   rootElement.innerHTML = `
     <div class="app-shell">
       ${courseDialog()}
+      ${studyCollectionDialog()}
       <aside class="sidebar">
         <div class="brand">
           <div class="brand-mark">${icon("brain")}</div>
@@ -296,16 +296,6 @@ function render() {
               <h3>${t("收藏与错题集", "Favorites and wrong questions")}</h3>
             </div>
           </div>
-          <div class="study-board-metrics">
-            <div class="memory-mini-metric">
-              <strong>${favoriteQuestionRefs.length}</strong>
-              <span>${t("收藏题目", "Favorites")}</span>
-            </div>
-            <div class="memory-mini-metric">
-              <strong>${reviewQuestionRefs.length}</strong>
-              <span>${t("待复习", "To review")}</span>
-            </div>
-          </div>
           <div class="study-board-columns">
             <div class="study-board-section">
               <div class="study-section-head">
@@ -472,8 +462,18 @@ function attachEvents(activeGeneration) {
 
   document.querySelectorAll("[data-create-study-collection]").forEach((button) => {
     button.addEventListener("click", () => {
-      createStudyCollection(button.dataset.createStudyCollection);
+      openStudyCollectionDialog(button.dataset.createStudyCollection);
     });
+  });
+
+  document.getElementById("studyCollectionDialogForm")?.addEventListener("submit", handleCreateStudyCollection);
+  document.getElementById("closeStudyCollectionDialogBtn")?.addEventListener("click", closeStudyCollectionDialog);
+  document.getElementById("cancelStudyCollectionDialogBtn")?.addEventListener("click", closeStudyCollectionDialog);
+  document.getElementById("studyCollectionDialogBackdrop")?.addEventListener("click", (event) => {
+    if (event.target.id === "studyCollectionDialogBackdrop") closeStudyCollectionDialog();
+  });
+  document.getElementById("studyCollectionDialogName")?.addEventListener("input", (event) => {
+    event.target.classList.remove("needs-value");
   });
 
   document.querySelectorAll("[data-open-study-collection]").forEach((button) => {
@@ -854,17 +854,32 @@ function setQuestionStudyStatus(generationId, itemIndex, status) {
   }));
 }
 
-function createStudyCollection(type) {
-  const activeCourse = getActiveCourse();
+function openStudyCollectionDialog(type) {
   const collectionType = normalizeStudyCollectionType(type);
+  if (!getActiveCourse() || !collectionType) return;
+  studyCollectionDialogType = collectionType;
+  render();
+}
+
+function closeStudyCollectionDialog() {
+  studyCollectionDialogType = "";
+  render();
+}
+
+function handleCreateStudyCollection(event) {
+  event.preventDefault();
+  const activeCourse = getActiveCourse();
+  const collectionType = normalizeStudyCollectionType(studyCollectionDialogType);
   if (!activeCourse || !collectionType) return;
 
-  const fallbackName = collectionType === "favorite" ? t("新收藏夹", "New folder") : t("新错题集", "New wrong-question set");
-  const name = window.prompt(
-    collectionType === "favorite" ? t("收藏夹名称", "Folder name") : t("错题集名称", "Wrong-question set name"),
-    fallbackName
-  )?.trim();
-  if (!name) return;
+  const input = document.getElementById("studyCollectionDialogName");
+  const name = input.value.trim();
+  if (!name) {
+    input.classList.add("needs-value");
+    input.placeholder = collectionType === "favorite" ? t("请输入收藏夹名称", "Enter a folder name") : t("请输入错题集名称", "Enter a wrong-question set name");
+    input.focus();
+    return;
+  }
 
   const nextCollection = {
     id: crypto.randomUUID(),
@@ -877,6 +892,7 @@ function createStudyCollection(type) {
 
   persist({ ...state, studyCollections: [nextCollection, ...state.studyCollections] });
   activeStudyCollectionId = nextCollection.id;
+  studyCollectionDialogType = "";
   render();
 }
 
@@ -2056,6 +2072,40 @@ function courseDialog() {
           </label>
           <div class="modal-actions">
             <button class="secondary-action" id="cancelCourseDialogBtn" type="button">${t("取消", "Cancel")}</button>
+            <button class="create-course-button" type="submit">
+              ${icon("folder-plus")}<span>${t("创建", "Create")}</span>
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  `;
+}
+
+function studyCollectionDialog() {
+  const collectionType = normalizeStudyCollectionType(studyCollectionDialogType);
+  if (!collectionType) return "";
+
+  const isFavorite = collectionType === "favorite";
+  return `
+    <div class="modal-backdrop" id="studyCollectionDialogBackdrop" role="presentation">
+      <section class="modal-card course-dialog" role="dialog" aria-modal="true" aria-labelledby="studyCollectionDialogTitle">
+        <div class="modal-heading">
+          <div>
+            <p class="eyebrow">${isFavorite ? t("新收藏夹", "New folder") : t("新错题集", "New wrong-question set")}</p>
+            <h2 id="studyCollectionDialogTitle">${isFavorite ? t("创建收藏夹", "Create Folder") : t("创建错题集", "Create Set")}</h2>
+          </div>
+          <button class="icon-button quiet" id="closeStudyCollectionDialogBtn" type="button" aria-label="${t("关闭", "Close")}">
+            ${icon("x")}
+          </button>
+        </div>
+        <form class="modal-form" id="studyCollectionDialogForm">
+          <label>
+            <span>${isFavorite ? t("收藏夹名称", "Folder name") : t("错题集名称", "Set name")}</span>
+            <input id="studyCollectionDialogName" autocomplete="off" autofocus placeholder="${isFavorite ? t("例如 期中复习", "Example: Midterm review") : t("例如 导数易错题", "Example: Derivatives review")}" />
+          </label>
+          <div class="modal-actions">
+            <button class="secondary-action" id="cancelStudyCollectionDialogBtn" type="button">${t("取消", "Cancel")}</button>
             <button class="create-course-button" type="submit">
               ${icon("folder-plus")}<span>${t("创建", "Create")}</span>
             </button>
