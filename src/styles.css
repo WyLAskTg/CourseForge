@@ -1348,7 +1348,8 @@ h2 {
 
 .announcement-list,
 .search-result-list,
-.study-link-list {
+.study-link-list,
+.study-collection-list {
   display: grid;
   gap: 10px;
 }
@@ -1428,7 +1429,8 @@ h2 {
 }
 
 .search-result-item,
-.study-link-item {
+.study-link-item,
+.study-collection-item {
   display: grid;
   gap: 4px;
   width: 100%;
@@ -1441,7 +1443,8 @@ h2 {
 }
 
 .search-result-item:hover,
-.study-link-item:hover {
+.study-link-item:hover,
+.study-collection-item:hover {
   border-color: #c2ccd4;
   background: white;
 }
@@ -1449,11 +1452,55 @@ h2 {
 .search-result-item span,
 .study-link-item span,
 .search-result-item small,
-.study-link-item small {
+.study-link-item small,
+.study-collection-item span {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+.study-section-head,
+.study-collection-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.study-collection-item {
+  padding: 10px;
+}
+
+.study-collection-item.active {
+  border-color: rgba(15, 118, 110, 0.45);
+  background: var(--teal-soft);
+}
+
+.study-collection-item > button:first-child {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  color: inherit;
+  text-align: left;
+}
+
+.study-collection-detail {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.collection-select {
+  width: auto;
+  min-width: 124px;
+  max-width: 180px;
+  height: 34px;
+  padding: 0 28px 0 10px;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .study-board-metrics {

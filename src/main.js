@@ -26,7 +26,8 @@ const CIRCUIT_COMPONENT_PRIORITIES = new Map([
 const defaultState = {
   courses: [],
   documents: [],
-  generations: []
+  generations: [],
+  studyCollections: []
 };
 
 const STUDY_STATUS_OPTIONS = [
@@ -88,6 +89,7 @@ let feedbackReplyDraft = "";
 let feedbackViewer = { authenticated: false, canReply: false, email: "" };
 let searchQuery = "";
 let activeQuestionKey = "";
+let activeStudyCollectionId = "";
 let pendingScrollTarget = "";
 let isCourseDialogOpen = false;
 
@@ -114,6 +116,11 @@ function render() {
   const questionReferences = collectQuestionReferences(courseGenerations);
   const favoriteQuestionRefs = questionReferences.filter((item) => item.isFavorite);
   const reviewQuestionRefs = questionReferences.filter((item) => ["review", "stuck"].includes(item.studyStatus));
+  const courseStudyCollections = getCourseStudyCollections(activeCourse?.id);
+  const favoriteCollections = courseStudyCollections.filter((collection) => collection.type === "favorite");
+  const wrongCollections = courseStudyCollections.filter((collection) => collection.type === "wrong");
+  const activeStudyCollection = courseStudyCollections.find((collection) => collection.id === activeStudyCollectionId) || null;
+  const activeStudyCollectionRefs = activeStudyCollection ? resolveStudyCollectionItems(activeStudyCollection, questionReferences) : [];
   const searchResults = buildWorkspaceSearchResults(searchQuery, courseDocuments, courseGenerations, questionReferences);
 
   window.MathJax?.typesetClear?.([rootElement]);
@@ -301,22 +308,41 @@ function render() {
           </div>
           <div class="study-board-columns">
             <div class="study-board-section">
-              <strong>${t("收藏夹", "Favorites")}</strong>
-              <div class="study-link-list">
-                ${favoriteQuestionRefs.length
-                  ? favoriteQuestionRefs.slice(0, 6).map(renderStudyLinkItem).join("")
-                  : `<p class="feedback-inline-status">${escapeHtml(t("给题目标星后会出现在这里。", "Star a question and it will appear here."))}</p>`}
+              <div class="study-section-head">
+                <strong>${t("收藏夹", "Favorites")}</strong>
+                <button class="spotlight-link" type="button" data-create-study-collection="favorite">${t("新建", "New")}</button>
+              </div>
+              <div class="study-collection-list">
+                ${favoriteCollections.length
+                  ? favoriteCollections.map((collection) => renderStudyCollectionItem(collection, questionReferences, activeStudyCollectionId)).join("")
+                  : `<p class="feedback-inline-status">${escapeHtml(t("新建收藏夹后，可把题目归类保存。", "Create a folder to organize saved questions."))}</p>`}
               </div>
             </div>
             <div class="study-board-section">
-              <strong>${t("错题集", "Wrong questions")}</strong>
-              <div class="study-link-list">
-                ${reviewQuestionRefs.length
-                  ? reviewQuestionRefs.slice(0, 6).map(renderStudyLinkItem).join("")
-                  : `<p class="feedback-inline-status">${escapeHtml(t("把题目标记为“模糊”或“不会”后会加入这里。", "Mark questions as review or need help and they will show up here."))}</p>`}
+              <div class="study-section-head">
+                <strong>${t("错题集", "Wrong questions")}</strong>
+                <button class="spotlight-link" type="button" data-create-study-collection="wrong">${t("新建", "New")}</button>
+              </div>
+              <div class="study-collection-list">
+                ${wrongCollections.length
+                  ? wrongCollections.map((collection) => renderStudyCollectionItem(collection, questionReferences, activeStudyCollectionId)).join("")
+                  : `<p class="feedback-inline-status">${escapeHtml(t("新建错题集后，可把题目按薄弱点归类。", "Create a wrong-question set to group weak spots."))}</p>`}
               </div>
             </div>
           </div>
+          ${activeStudyCollection ? `
+            <div class="study-collection-detail">
+              <div class="study-section-head">
+                <strong>${escapeHtml(activeStudyCollection.name)}</strong>
+                <button class="spotlight-link" type="button" data-close-study-collection="1">${t("收起", "Collapse")}</button>
+              </div>
+              <div class="study-link-list">
+                ${activeStudyCollectionRefs.length
+                  ? activeStudyCollectionRefs.map(renderStudyLinkItem).join("")
+                  : `<p class="feedback-inline-status">${escapeHtml(t("这个集合里还没有题目。", "This collection has no questions yet."))}</p>`}
+              </div>
+            </div>
+          ` : ""}
         </section>
         <div class="history-list">
           ${courseGenerations.length ? courseGenerations.map((generation) => historyItem(generation, activeGeneration?.id)).join("") : emptyState("history", t("没有历史记录", "No history"), t("自动保存在当前课程", "Saved to this course"), true)}
@@ -392,6 +418,7 @@ function attachEvents(activeGeneration) {
       activeCourseId = button.dataset.courseId;
       activeGenerationId = "";
       activeQuestionKey = "";
+      activeStudyCollectionId = "";
       audience = getActiveCourse()?.audience || "学生";
       render();
     });
@@ -441,6 +468,36 @@ function attachEvents(activeGeneration) {
     button.addEventListener("click", () => {
       setQuestionStudyStatus(button.dataset.generationId, Number(button.dataset.itemIndex), button.dataset.markStudy);
     });
+  });
+
+  document.querySelectorAll("[data-create-study-collection]").forEach((button) => {
+    button.addEventListener("click", () => {
+      createStudyCollection(button.dataset.createStudyCollection);
+    });
+  });
+
+  document.querySelectorAll("[data-open-study-collection]").forEach((button) => {
+    button.addEventListener("click", () => {
+      activeStudyCollectionId = button.dataset.openStudyCollection;
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-delete-study-collection]").forEach((button) => {
+    button.addEventListener("click", () => {
+      deleteStudyCollection(button.dataset.deleteStudyCollection);
+    });
+  });
+
+  document.querySelectorAll("[data-add-study-collection]").forEach((select) => {
+    select.addEventListener("change", () => {
+      addQuestionToStudyCollection(select.value, select.dataset.generationId, Number(select.dataset.itemIndex));
+    });
+  });
+
+  document.querySelector("[data-close-study-collection]")?.addEventListener("click", () => {
+    activeStudyCollectionId = "";
+    render();
   });
 
   document.querySelectorAll("[data-open-question]").forEach((button) => {
@@ -797,6 +854,82 @@ function setQuestionStudyStatus(generationId, itemIndex, status) {
   }));
 }
 
+function createStudyCollection(type) {
+  const activeCourse = getActiveCourse();
+  const collectionType = normalizeStudyCollectionType(type);
+  if (!activeCourse || !collectionType) return;
+
+  const fallbackName = collectionType === "favorite" ? t("新收藏夹", "New folder") : t("新错题集", "New wrong-question set");
+  const name = window.prompt(
+    collectionType === "favorite" ? t("收藏夹名称", "Folder name") : t("错题集名称", "Wrong-question set name"),
+    fallbackName
+  )?.trim();
+  if (!name) return;
+
+  const nextCollection = {
+    id: crypto.randomUUID(),
+    courseId: activeCourse.id,
+    type: collectionType,
+    name,
+    itemRefs: [],
+    createdAt: new Date().toISOString()
+  };
+
+  persist({ ...state, studyCollections: [nextCollection, ...state.studyCollections] });
+  activeStudyCollectionId = nextCollection.id;
+  render();
+}
+
+function deleteStudyCollection(collectionId) {
+  const collection = state.studyCollections.find((item) => item.id === collectionId);
+  if (!collection) return;
+
+  const confirmed = window.confirm(t(`删除「${collection.name}」？集合里的题目引用会被移除，原生成记录不会删除。`, `Delete "${collection.name}"? Question links will be removed, but generated outputs stay.`));
+  if (!confirmed) return;
+
+  persist({ ...state, studyCollections: state.studyCollections.filter((item) => item.id !== collectionId) });
+  if (activeStudyCollectionId === collectionId) activeStudyCollectionId = "";
+  render();
+}
+
+function addQuestionToStudyCollection(collectionId, generationId, itemIndex) {
+  if (!collectionId || !generationId || !Number.isInteger(itemIndex)) return;
+  const collection = state.studyCollections.find((item) => item.id === collectionId);
+  const generation = state.generations.find((item) => item.id === generationId);
+  if (!collection || !generation) return;
+
+  const ref = { generationId, itemIndex, questionKey: getQuestionKey(generationId, itemIndex) };
+  const nextCollections = state.studyCollections.map((item) => {
+    if (item.id !== collectionId) return item;
+    const refs = Array.isArray(item.itemRefs) ? item.itemRefs : [];
+    const exists = refs.some((candidate) => candidate.generationId === generationId && Number(candidate.itemIndex) === itemIndex);
+    return exists ? item : { ...item, itemRefs: [ref, ...refs] };
+  });
+
+  const nextGenerations = state.generations.map((item) => {
+    if (item.id !== generationId) return item;
+    const items = Array.isArray(item.output?.items) ? item.output.items : [];
+    if (!items[itemIndex]) return item;
+    const nextItems = items.map((question, index) => {
+      const normalizedQuestion = normalizeGeneratedItem(question);
+      if (index !== itemIndex) return normalizedQuestion;
+      return normalizeGeneratedItem({
+        ...normalizedQuestion,
+        isFavorite: collection.type === "favorite" ? true : normalizedQuestion.isFavorite,
+        studyStatus: collection.type === "wrong" && !normalizedQuestion.studyStatus ? "review" : normalizedQuestion.studyStatus
+      });
+    });
+    return { ...item, output: { ...item.output, items: nextItems } };
+  });
+
+  persist({ ...state, generations: nextGenerations, studyCollections: nextCollections });
+  activeStudyCollectionId = collectionId;
+  activeGenerationId = generationId;
+  activeQuestionKey = ref.questionKey;
+  queueScrollTarget(`question:${ref.questionKey}`);
+  render();
+}
+
 function updateGenerationItemState(generationId, itemIndex, updater) {
   if (!generationId || !Number.isInteger(itemIndex) || itemIndex < 0) return;
 
@@ -1009,6 +1142,7 @@ function deleteCourse(courseId) {
   const nextCourses = state.courses.filter((item) => item.id !== courseId);
   const nextDocuments = state.documents.filter((document) => document.courseId !== courseId);
   const nextGenerations = state.generations.filter((generation) => generation.courseId !== courseId);
+  const nextStudyCollections = state.studyCollections.filter((collection) => collection.courseId !== courseId);
   const retainedActiveCourse = activeCourseId === courseId ? null : nextCourses.find((item) => item.id === activeCourseId);
   const nextActiveCourse = retainedActiveCourse || nextCourses[0];
 
@@ -1016,12 +1150,14 @@ function deleteCourse(courseId) {
     ...state,
     courses: nextCourses,
     documents: nextDocuments,
-    generations: nextGenerations
+    generations: nextGenerations,
+    studyCollections: nextStudyCollections
   });
 
   activeCourseId = nextActiveCourse?.id || "";
   activeGenerationId = "";
   activeQuestionKey = "";
+  activeStudyCollectionId = nextStudyCollections.some((collection) => collection.id === activeStudyCollectionId) ? activeStudyCollectionId : "";
   audience = nextActiveCourse?.audience || "学生";
   visibleAnswerKeys = new Set(
     Array.from(visibleAnswerKeys).filter((key) => nextGenerations.some((generation) => key.startsWith(`${generation.id}:`)))
@@ -1037,13 +1173,20 @@ function deleteGeneration(generationId) {
   if (!confirmed) return;
 
   const nextGenerations = state.generations.filter((item) => item.id !== generationId);
-  persist({ ...state, generations: nextGenerations });
+  const nextStudyCollections = state.studyCollections.map((collection) => ({
+    ...collection,
+    itemRefs: collection.itemRefs.filter((ref) => ref.generationId !== generationId)
+  }));
+  persist({ ...state, generations: nextGenerations, studyCollections: nextStudyCollections });
 
   if (activeGenerationId === generationId) {
     activeGenerationId = "";
   }
   if (activeQuestionKey.startsWith(`${generationId}:question:`)) {
     activeQuestionKey = "";
+  }
+  if (activeStudyCollectionId && !nextStudyCollections.some((collection) => collection.id === activeStudyCollectionId)) {
+    activeStudyCollectionId = "";
   }
   visibleAnswerKeys = new Set(Array.from(visibleAnswerKeys).filter((key) => !key.startsWith(`${generationId}:`)));
   render();
@@ -1675,6 +1818,17 @@ function getCourseGenerations() {
   return state.generations.filter((generation) => generation.courseId === activeCourse?.id);
 }
 
+function getCourseStudyCollections(courseId = getActiveCourse()?.id) {
+  return state.studyCollections.filter((collection) => collection.courseId === courseId);
+}
+
+function resolveStudyCollectionItems(collection, questionReferences) {
+  const referenceByKey = new Map(questionReferences.map((item) => [`${item.generationId}:${item.itemIndex}`, item]));
+  return collection.itemRefs
+    .map((ref) => referenceByKey.get(`${ref.generationId}:${ref.itemIndex}`))
+    .filter(Boolean);
+}
+
 function getCorpus(courseDocuments) {
   return [...courseDocuments.map((document) => document.text), extraRequirement].join("\n");
 }
@@ -1750,7 +1904,8 @@ function mergeCourseForgeStates(remoteState, localState) {
   return normalizeState({
     courses: mergeRecords(remote.courses, local.courses),
     documents: mergeRecords(remote.documents, local.documents),
-    generations: mergeRecords(remote.generations, local.generations)
+    generations: mergeRecords(remote.generations, local.generations),
+    studyCollections: mergeRecords(remote.studyCollections, local.studyCollections)
   });
 }
 
@@ -1774,7 +1929,8 @@ function normalizeState(value) {
   let normalized = {
     courses: Array.isArray(value?.courses) ? value.courses : defaultState.courses,
     documents: Array.isArray(value?.documents) ? value.documents : [],
-    generations: Array.isArray(value?.generations) ? value.generations : []
+    generations: Array.isArray(value?.generations) ? value.generations : [],
+    studyCollections: Array.isArray(value?.studyCollections) ? value.studyCollections : []
   };
 
   normalized.courses = normalized.courses.map((course, index) => ({
@@ -1806,6 +1962,8 @@ function normalizeState(value) {
     createdAt: generation.createdAt || new Date().toISOString()
   }));
 
+  normalized.studyCollections = normalized.studyCollections.map((collection) => normalizeStudyCollection(collection, normalized.courses[0]?.id || ""));
+
   normalized = removeUnusedSeedCourses(normalized);
 
   return normalized;
@@ -1834,6 +1992,31 @@ function normalizeGeneratedItem(item = {}) {
   };
 }
 
+function normalizeStudyCollection(collection = {}, fallbackCourseId = "") {
+  return {
+    id: collection.id || crypto.randomUUID(),
+    courseId: collection.courseId || fallbackCourseId,
+    type: normalizeStudyCollectionType(collection.type) || "favorite",
+    name: String(collection.name || "Untitled"),
+    itemRefs: Array.isArray(collection.itemRefs) ? collection.itemRefs.map(normalizeStudyCollectionRef).filter(Boolean) : [],
+    createdAt: collection.createdAt || new Date().toISOString()
+  };
+}
+
+function normalizeStudyCollectionRef(ref = {}) {
+  const itemIndex = Number(ref.itemIndex);
+  if (!ref.generationId || !Number.isInteger(itemIndex) || itemIndex < 0) return null;
+  return {
+    generationId: String(ref.generationId),
+    itemIndex,
+    questionKey: ref.questionKey || getQuestionKey(ref.generationId, itemIndex)
+  };
+}
+
+function normalizeStudyCollectionType(value) {
+  return ["favorite", "wrong"].includes(value) ? value : "";
+}
+
 function normalizeStudyStatus(value) {
   return ["stuck", "review", "mastered"].includes(value) ? value : "";
 }
@@ -1841,7 +2024,8 @@ function normalizeStudyStatus(value) {
 function removeUnusedSeedCourses(value) {
   const usedCourseIds = new Set([
     ...value.documents.map((document) => document.courseId),
-    ...value.generations.map((generation) => generation.courseId)
+    ...value.generations.map((generation) => generation.courseId),
+    ...value.studyCollections.map((collection) => collection.courseId)
   ]);
 
   return {
@@ -2016,6 +2200,7 @@ function resultItem(generation, output, item, index) {
   const answerVisible = hasAnswer && visibleAnswerKeys.has(answerKey);
   const canTrackItem = output.type !== "refusal";
   const showStudyTools = canTrackItem && isAssessmentTask(output.type);
+  const courseStudyCollections = getCourseStudyCollections(generation.courseId);
 
   return `
     <article class="result-item ${output.type === "refusal" ? "blocked" : ""} ${questionKey === activeQuestionKey ? "focused" : ""}" data-scroll-target="question:${escapeAttr(questionKey)}">
@@ -2038,6 +2223,7 @@ function resultItem(generation, output, item, index) {
               `).join("")}
             </div>
           ` : ""}
+          ${showStudyTools && courseStudyCollections.length ? renderStudyCollectionSelect(courseStudyCollections, generation.id, index) : ""}
         </div>
       ` : ""}
       ${hasAnswer ? `
@@ -2280,6 +2466,37 @@ function renderStudyLinkItem(item) {
       <span>${escapeHtml(buildStudyItemMeta(item))}</span>
       <small>${escapeHtml(item.preview)}</small>
     </button>
+  `;
+}
+
+function renderStudyCollectionItem(collection, questionReferences, activeId) {
+  const items = resolveStudyCollectionItems(collection, questionReferences);
+  return `
+    <article class="study-collection-item ${collection.id === activeId ? "active" : ""}">
+      <button type="button" data-open-study-collection="${escapeAttr(collection.id)}">
+        <strong>${escapeHtml(collection.name)}</strong>
+        <span>${items.length} ${escapeHtml(t("题", "item(s)"))}</span>
+      </button>
+      <button class="icon-button quiet" type="button" data-delete-study-collection="${escapeAttr(collection.id)}" aria-label="${t("删除集合", "Delete collection")}">
+        ${icon("trash-2")}
+      </button>
+    </article>
+  `;
+}
+
+function renderStudyCollectionSelect(collections, generationId, itemIndex) {
+  const favoriteCollections = collections.filter((collection) => collection.type === "favorite");
+  const wrongCollections = collections.filter((collection) => collection.type === "wrong");
+  return `
+    <select class="collection-select" data-add-study-collection="1" data-generation-id="${escapeAttr(generationId)}" data-item-index="${itemIndex}" aria-label="${t("加入集合", "Add to collection")}">
+      <option value="">${t("加入集合", "Add to")}</option>
+      ${favoriteCollections.length ? `<optgroup label="${escapeAttr(t("收藏夹", "Favorites"))}">
+        ${favoriteCollections.map((collection) => `<option value="${escapeAttr(collection.id)}">${escapeHtml(collection.name)}</option>`).join("")}
+      </optgroup>` : ""}
+      ${wrongCollections.length ? `<optgroup label="${escapeAttr(t("错题集", "Wrong questions"))}">
+        ${wrongCollections.map((collection) => `<option value="${escapeAttr(collection.id)}">${escapeHtml(collection.name)}</option>`).join("")}
+      </optgroup>` : ""}
+    </select>
   `;
 }
 
