@@ -31,6 +31,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  overflow: hidden;
   color: var(--text);
   background: var(--bg);
   letter-spacing: 0;
@@ -58,6 +59,8 @@ button:disabled {
   display: grid;
   grid-template-columns: 270px minmax(0, 1fr) 300px;
   min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .sidebar,
@@ -65,6 +68,9 @@ button:disabled {
   background: #fbfcfd;
   border-color: var(--line);
   padding: 20px;
+  height: 100vh;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .sidebar {
@@ -394,6 +400,10 @@ input.needs-value::placeholder {
   margin-top: 18px;
 }
 
+.history-panel .history-list {
+  margin-top: 0;
+}
+
 .course-entry,
 .history-entry {
   display: grid;
@@ -439,6 +449,9 @@ input.needs-value::placeholder {
 
 .workspace {
   min-width: 0;
+  height: 100vh;
+  min-height: 0;
+  overflow-y: auto;
   padding: 24px;
 }
 
@@ -1354,7 +1367,8 @@ h2 {
 
 .announcement-panel,
 .search-panel,
-.study-board {
+.study-board,
+.history-panel {
   display: grid;
   gap: 12px;
   margin-top: 18px;
@@ -1634,8 +1648,22 @@ h2 {
 }
 
 @media (max-width: 1440px) {
+  body {
+    overflow: auto;
+  }
+
   .app-shell {
     grid-template-columns: 260px minmax(0, 1fr);
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .sidebar,
+  .workspace,
+  .memory-panel {
+    height: auto;
+    overflow: visible;
   }
 
   .memory-panel {

@@ -334,9 +334,16 @@ function render() {
             </div>
           ` : ""}
         </section>
-        <div class="history-list">
-          ${courseGenerations.length ? courseGenerations.map((generation) => historyItem(generation, activeGeneration?.id)).join("") : emptyState("history", t("没有历史记录", "No history"), t("自动保存在当前课程", "Saved to this course"), true)}
-        </div>
+        <section class="history-panel">
+          <div class="memory-section-head">
+            <div>
+              <h3>${t("历史记录", "History")}</h3>
+            </div>
+          </div>
+          <div class="history-list">
+            ${courseGenerations.length ? courseGenerations.map((generation) => historyItem(generation, activeGeneration?.id)).join("") : emptyState("history", t("没有历史记录", "No history"), t("自动保存在当前课程", "Saved to this course"), true)}
+          </div>
+        </section>
       </aside>
     </div>
   `;
