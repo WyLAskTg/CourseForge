@@ -114,7 +114,7 @@ function render() {
   const hasCourse = Boolean(activeCourse);
   const usesAssessmentSettings = isAssessmentTask(selectedTask);
   const taskMode = usesAssessmentSettings ? "assessment" : "outline";
-  const taskTitle = t("生成内容", "Generation");
+  const taskTitle = t("生成设置", "Generation Settings");
   const showingFeedback = workspaceMode === "feedback";
   const questionReferences = collectQuestionReferences(courseGenerations);
   const courseStudyCollections = getCourseStudyCollections(activeCourse?.id);
