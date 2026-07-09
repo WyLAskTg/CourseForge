@@ -37,6 +37,29 @@ body {
   letter-spacing: 0;
 }
 
+.top-toast {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  z-index: 1200;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 18px;
+  color: #ffffff;
+  background: #0f766e;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: 8px;
+  box-shadow: 0 12px 30px rgba(15, 118, 110, 0.24);
+  transform: translateX(-50%);
+}
+
+.top-toast svg {
+  width: 18px;
+  height: 18px;
+}
+
 button,
 input,
 select,

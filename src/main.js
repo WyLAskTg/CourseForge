@@ -95,6 +95,8 @@ let isCourseDialogOpen = false;
 let studyCollectionDialogType = "";
 let renameGenerationId = "";
 let isAuthDialogOpen = false;
+let topToast = null;
+let topToastTimer = null;
 
 render();
 initializeCloudSession();
@@ -131,6 +133,7 @@ function render() {
       ${studyCollectionDialog()}
       ${renameGenerationDialog()}
       ${authDialog()}
+      ${topToastMarkup()}
 
       <main class="workspace">
         <header class="topbar">
@@ -639,6 +642,7 @@ async function handleAuthSubmit(event) {
     render();
     await pullCloudState({ mergeLocal: true });
     await pushCloudState({ renderAfter: true });
+    showTopToast(action === "register" ? "registerSuccess" : "loginSuccess");
   } catch (error) {
     currentUser = null;
     cloudSyncStatus = { level: "error", code: "authError", detail: error.message };
@@ -655,7 +659,20 @@ async function handleLogout() {
 
   currentUser = null;
   cloudSyncStatus = { level: "local", code: "signedOut" };
+  showTopToast("logoutSuccess");
+}
+
+function showTopToast(code) {
+  if (topToastTimer) window.clearTimeout(topToastTimer);
+  const id = Date.now();
+  topToast = { id, code };
   render();
+  topToastTimer = window.setTimeout(() => {
+    if (topToast?.id !== id) return;
+    topToast = null;
+    topToastTimer = null;
+    render();
+  }, 2200);
 }
 
 async function pullCloudState({ mergeLocal = true } = {}) {
@@ -2267,6 +2284,20 @@ function authDialog() {
           </div>
         </form>
       </section>
+    </div>
+  `;
+}
+
+function topToastMarkup() {
+  if (!topToast) return "";
+  const labels = {
+    loginSuccess: t("登录成功", "Logged in successfully"),
+    logoutSuccess: t("登出成功", "Logged out successfully"),
+    registerSuccess: t("注册成功", "Account created successfully")
+  };
+  return `
+    <div class="top-toast" role="status" aria-live="polite">
+      ${icon("circle-check")}<span>${labels[topToast.code] || ""}</span>
     </div>
   `;
 }
