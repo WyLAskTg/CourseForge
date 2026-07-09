@@ -142,7 +142,11 @@ function render() {
             </div>
           </div>
           <div class="header-actions">
-            ${currentUser ? "" : `
+            ${currentUser ? `
+              <button class="secondary-action" id="logoutBtn" type="button">
+                ${icon("log-out")}<span>${t("登出", "Log out")}</span>
+              </button>
+            ` : `
               <button class="secondary-action" id="openAuthDialogBtn" type="button">
                 ${icon("log-in")}<span>${t("登录", "Log in")}</span>
               </button>
