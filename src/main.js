@@ -223,18 +223,15 @@ function render() {
                 </button>
                 <button type="button" class="task-button ${taskMode === "assessment" ? "selected" : ""}" data-task-mode="assessment">
                   ${icon("clipboard-list")}
-                  <span><strong>${t("试题", "Questions")}</strong><small>${t("普通小测或模拟考试", "Quiz or mock exam")}</small></span>
+                  <span><strong>${t("题目", "Questions")}</strong></span>
                 </button>
               </div>
 
               ${usesAssessmentSettings ? `
                 <div class="settings-grid">
                   <label>
-                    <span>${t("类型", "Type")}</span>
-                    <select id="questionTypeSelect">
-                      ${option("quiz", selectedTask, t("普通小测", "Regular Quiz"))}
-                      ${option("mock", selectedTask, t("模拟考试", "Mock Exam"))}
-                    </select>
+                    <span>${t("题量", "Count")}</span>
+                    <input id="questionCount" type="number" min="3" max="12" value="${questionCount}" />
                   </label>
                   <label>
                     <span>${t("难度", "Difficulty")}</span>
@@ -243,10 +240,6 @@ function render() {
                       ${option("中", difficulty, t("中", "Medium"))}
                       ${option("难", difficulty, t("难", "Hard"))}
                     </select>
-                  </label>
-                  <label>
-                    <span>${t("题量", "Count")}</span>
-                    <input id="questionCount" type="number" min="3" max="12" value="${questionCount}" />
                   </label>
                 </div>
               ` : ""}
@@ -413,18 +406,17 @@ function attachEvents(activeGeneration) {
   });
   document.getElementById("fileInput")?.addEventListener("change", handleFilesSelected);
   document.getElementById("generateBtn")?.addEventListener("click", handleGenerate);
-  document.getElementById("questionTypeSelect")?.addEventListener("change", (event) => {
-    selectedTask = event.target.value === "mock" ? "mock" : "quiz";
-    render();
-  });
   document.getElementById("difficultySelect")?.addEventListener("change", (event) => {
     difficulty = event.target.value;
   });
   document.getElementById("questionCount")?.addEventListener("change", (event) => {
     questionCount = clamp(Number(event.target.value), 3, 12);
   });
-  document.getElementById("extraRequirement")?.addEventListener("input", (event) => {
+  const extraRequirementInput = document.getElementById("extraRequirement");
+  autoResizeTextarea(extraRequirementInput);
+  extraRequirementInput?.addEventListener("input", (event) => {
     extraRequirement = event.target.value;
+    autoResizeTextarea(event.target);
   });
   document.getElementById("workspaceSearch")?.addEventListener("input", (event) => {
     searchQuery = event.target.value;
@@ -459,7 +451,7 @@ function attachEvents(activeGeneration) {
 
   document.querySelectorAll("[data-task-mode]").forEach((button) => {
     button.addEventListener("click", () => {
-      selectedTask = button.dataset.taskMode === "assessment" ? (isAssessmentTask(selectedTask) ? selectedTask : "quiz") : "knowledge";
+      selectedTask = button.dataset.taskMode === "assessment" ? "quiz" : "knowledge";
       render();
     });
   });
@@ -1112,6 +1104,12 @@ function renderPreservingOutputScroll() {
 
   window.requestAnimationFrame(restore);
   window.setTimeout(restore, 80);
+}
+
+function autoResizeTextarea(textarea) {
+  if (!textarea) return;
+  textarea.style.height = "auto";
+  textarea.style.height = `${textarea.scrollHeight}px`;
 }
 
 function buildWorkspaceSearchResults(query, courseDocuments, courseGenerations) {

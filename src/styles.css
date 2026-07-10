@@ -789,6 +789,11 @@ h2 {
   margin-top: 14px;
 }
 
+#extraRequirement {
+  resize: none;
+  overflow: hidden;
+}
+
 .output-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
