@@ -1665,6 +1665,19 @@ h2 {
   font-size: 14px;
 }
 
+.study-create-button {
+  min-width: 0;
+  min-height: 34px;
+  height: 34px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.study-create-button svg {
+  width: 16px;
+  height: 16px;
+}
+
 .document-note {
   display: block;
   margin-top: 4px;

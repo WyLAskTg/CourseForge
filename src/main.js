@@ -305,12 +305,14 @@ function render() {
             <div>
               <h3>${t("收藏夹", "Favorites")}</h3>
             </div>
-            <button class="spotlight-link" type="button" data-create-study-collection="favorite">${t("新建", "New")}</button>
+            <button class="create-course-button study-create-button" type="button" data-create-study-collection="favorite">
+              ${icon("plus")}<span>${t("新建", "New")}</span>
+            </button>
           </div>
           <div class="study-collection-list">
             ${favoriteCollections.length
               ? favoriteCollections.map((collection) => renderStudyCollectionItem(collection, questionReferences, activeStudyCollectionId)).join("")
-              : `<p class="feedback-inline-status">${escapeHtml(t("新建收藏夹后，可把题目归类保存。", "Create a folder to organize saved questions."))}</p>`}
+              : ""}
           </div>
           ${activeStudyCollection?.type === "favorite" ? `
             <div class="study-collection-detail">
@@ -331,12 +333,14 @@ function render() {
             <div>
               <h3>${t("错题集", "Wrong Questions")}</h3>
             </div>
-            <button class="spotlight-link" type="button" data-create-study-collection="wrong">${t("新建", "New")}</button>
+            <button class="create-course-button study-create-button" type="button" data-create-study-collection="wrong">
+              ${icon("plus")}<span>${t("新建", "New")}</span>
+            </button>
           </div>
           <div class="study-collection-list">
             ${wrongCollections.length
               ? wrongCollections.map((collection) => renderStudyCollectionItem(collection, questionReferences, activeStudyCollectionId)).join("")
-              : `<p class="feedback-inline-status">${escapeHtml(t("新建错题集后，可把题目按薄弱点归类。", "Create a wrong-question set to group weak spots."))}</p>`}
+              : ""}
           </div>
           ${activeStudyCollection?.type === "wrong" ? `
             <div class="study-collection-detail">
