@@ -1320,7 +1320,7 @@ h2 {
 
 .feedback-hub {
   display: grid;
-  grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.1fr);
+  grid-template-columns: minmax(300px, 0.95fr) minmax(340px, 1.05fr);
   gap: 16px;
   min-width: 0;
 }
@@ -1344,6 +1344,11 @@ h2 {
   background: var(--surface-muted);
 }
 
+.feedback-compose {
+  align-content: start;
+  gap: 10px;
+}
+
 .feedback-compose textarea,
 .feedback-reply-form textarea {
   min-height: 132px;
@@ -1357,7 +1362,7 @@ h2 {
 .feedback-compose-head strong,
 .feedback-list-head strong,
 .feedback-thread-subhead strong {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 900;
   line-height: 1.2;
 }
@@ -1403,6 +1408,39 @@ h2 {
 
 .feedback-thread-card {
   background: white;
+}
+
+.feedback-thread-dialog {
+  width: min(760px, 100%);
+  max-height: min(86vh, 820px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.feedback-thread-dialog-body {
+  min-height: 0;
+  margin-top: 16px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.feedback-thread-dialog .feedback-thread-card {
+  border: 0;
+  padding: 0;
+  background: white;
+}
+
+.feedback-thread-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.feedback-like-button.active {
+  color: var(--teal);
+  border-color: rgba(15, 118, 110, 0.28);
+  background: var(--teal-soft);
+  opacity: 1;
 }
 
 .feedback-message {

@@ -42,11 +42,19 @@ async function handlePost(request, env, db) {
   const threadId = String(body?.threadId || "").trim();
 
   if (threadId) {
-    const auth = await requireUser(request, env);
-    if (auth.error) return auth.error;
+    const viewer = await resolveViewer(request, env);
 
-    if (!isDeveloperUser(auth.user, env)) {
-      return json({ error: "Only the developer account can post replies." }, { status: 403 });
+    if (String(body?.action || "").trim().toLowerCase() === "like") {
+      const thread = await likeFeedbackThread(db, threadId);
+      if (!thread) {
+        return json({ error: "Feedback thread not found." }, { status: 404 });
+      }
+
+      return json({
+        viewer,
+        items: await listFeedbackThreads(db),
+        thread
+      });
     }
 
     const replyBody = normalizeFeedbackText(body?.body, BODY_LIMIT);
@@ -54,13 +62,13 @@ async function handlePost(request, env, db) {
       return json({ error: "Reply content cannot be empty." }, { status: 400 });
     }
 
-    const thread = await createFeedbackReply(db, threadId, auth.user, replyBody);
+    const thread = await createFeedbackReply(db, threadId, viewer, replyBody);
     if (!thread) {
       return json({ error: "Feedback thread not found." }, { status: 404 });
     }
 
     return json({
-      viewer: buildViewerState(auth.user, env),
+      viewer,
       items: await listFeedbackThreads(db),
       thread
     });
@@ -91,6 +99,8 @@ function buildViewerState(user, env) {
   return {
     authenticated: Boolean(user),
     canReply: Boolean(user && isDeveloperUser(user, env)),
+    isDeveloper: Boolean(user && isDeveloperUser(user, env)),
+    userId: String(user?.id || ""),
     email: String(user?.email || "")
   };
 }
@@ -131,28 +141,37 @@ async function createFeedbackThread(db, { title, body }) {
   const id = newFeedbackId("feedback");
 
   await db.prepare(
-    `INSERT INTO feedback_threads (id, title, body, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?)`
+    `INSERT INTO feedback_threads (id, title, body, like_count, created_at, updated_at)
+     VALUES (?, ?, ?, 0, ?, ?)`
   ).bind(id, title, body, now, now).run();
 
   return readFeedbackThread(db, id);
 }
 
-async function createFeedbackReply(db, threadId, user, body) {
+async function createFeedbackReply(db, threadId, viewer, body) {
   const existing = await db.prepare("SELECT id FROM feedback_threads WHERE id = ?").bind(threadId).first();
   if (!existing) return null;
 
   const now = new Date().toISOString();
   const replyId = newFeedbackId("reply");
+  const isDeveloper = Boolean(viewer?.isDeveloper);
+  const authorLabel = isDeveloper ? "Developer" : "Anonymous";
 
   await db.batch([
     db.prepare(
       `INSERT INTO feedback_replies (id, thread_id, author_user_id, author_email, author_label, body, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(replyId, threadId, user.id, user.email, "Developer", body, now, now),
+    ).bind(replyId, threadId, viewer?.userId || null, isDeveloper ? viewer?.email || "" : null, authorLabel, body, now, now),
     db.prepare("UPDATE feedback_threads SET updated_at = ? WHERE id = ?").bind(now, threadId)
   ]);
 
+  return readFeedbackThread(db, threadId);
+}
+
+async function likeFeedbackThread(db, threadId) {
+  const existing = await db.prepare("SELECT id FROM feedback_threads WHERE id = ?").bind(threadId).first();
+  if (!existing) return null;
+  await db.prepare("UPDATE feedback_threads SET like_count = COALESCE(like_count, 0) + 1 WHERE id = ?").bind(threadId).run();
   return readFeedbackThread(db, threadId);
 }
 
@@ -162,12 +181,13 @@ async function listFeedbackThreads(db) {
        feedback_threads.id,
        feedback_threads.title,
        feedback_threads.body,
+       COALESCE(feedback_threads.like_count, 0) AS like_count,
        feedback_threads.created_at,
        feedback_threads.updated_at,
        COUNT(feedback_replies.id) AS reply_count
      FROM feedback_threads
      LEFT JOIN feedback_replies ON feedback_replies.thread_id = feedback_threads.id
-     GROUP BY feedback_threads.id
+     GROUP BY feedback_threads.id, feedback_threads.like_count
      ORDER BY feedback_threads.updated_at DESC, feedback_threads.created_at DESC`
   ).all();
 
@@ -180,13 +200,14 @@ async function readFeedbackThread(db, threadId) {
        feedback_threads.id,
        feedback_threads.title,
        feedback_threads.body,
+       COALESCE(feedback_threads.like_count, 0) AS like_count,
        feedback_threads.created_at,
        feedback_threads.updated_at,
        COUNT(feedback_replies.id) AS reply_count
      FROM feedback_threads
      LEFT JOIN feedback_replies ON feedback_replies.thread_id = feedback_threads.id
      WHERE feedback_threads.id = ?
-     GROUP BY feedback_threads.id`
+     GROUP BY feedback_threads.id, feedback_threads.like_count`
   ).bind(threadId).first();
 
   if (!threadRow) return null;
@@ -215,6 +236,7 @@ function feedbackThreadRowToItem(row) {
     id: row.id,
     title: row.title || "",
     body: row.body || "",
+    likeCount: Number(row.like_count || 0),
     replyCount: Number(row.reply_count || 0),
     createdAt: row.created_at,
     updatedAt: row.updated_at || row.created_at

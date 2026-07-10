@@ -54,6 +54,7 @@ const schemaStatements = [
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     body TEXT NOT NULL,
+    like_count INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
@@ -74,6 +75,10 @@ const schemaStatements = [
   "CREATE INDEX IF NOT EXISTS idx_feedback_threads_updated_at ON feedback_threads(updated_at)",
   "CREATE INDEX IF NOT EXISTS idx_feedback_replies_thread_id ON feedback_replies(thread_id)",
   "CREATE INDEX IF NOT EXISTS idx_feedback_replies_created_at ON feedback_replies(created_at)"
+];
+
+const schemaMigrations = [
+  "ALTER TABLE feedback_threads ADD COLUMN like_count INTEGER NOT NULL DEFAULT 0"
 ];
 
 export function json(data, init = {}) {
@@ -99,6 +104,15 @@ export async function ensureSchema(env) {
   if (!db) return null;
   for (const statement of schemaStatements) {
     await db.prepare(statement).run();
+  }
+  for (const statement of schemaMigrations) {
+    try {
+      await db.prepare(statement).run();
+    } catch (error) {
+      if (!/duplicate column|already exists/i.test(String(error?.message || error))) {
+        throw error;
+      }
+    }
   }
   return db;
 }

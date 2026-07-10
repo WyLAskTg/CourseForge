@@ -3,6 +3,7 @@ import { PRODUCT_ANNOUNCEMENTS } from "./announcements.js";
 const STORAGE_KEY = "courseforge-state-v3";
 const LEGACY_STORAGE_KEY = "courseforge-state-v1";
 const UI_LANGUAGE_KEY = "courseforge-ui-language";
+const FEEDBACK_LIKES_KEY = "courseforge-feedback-likes";
 const TEXT_LIMIT = 120000;
 const SYNC_DEBOUNCE_MS = 900;
 const SEARCH_RESULT_LIMIT = 12;
@@ -87,6 +88,7 @@ let feedbackDraftTitle = "";
 let feedbackDraftBody = "";
 let feedbackReplyDraft = "";
 let feedbackViewer = { authenticated: false, canReply: false, email: "" };
+let feedbackLikedIds = loadFeedbackLikedIds();
 let searchQuery = "";
 let activeQuestionKey = "";
 let activeStudyCollectionId = "";
@@ -95,6 +97,7 @@ let isCourseDialogOpen = false;
 let studyCollectionDialogType = "";
 let renameGenerationId = "";
 let isAuthDialogOpen = false;
+let isFeedbackThreadModalOpen = false;
 let topToast = null;
 let topToastTimer = null;
 
@@ -133,6 +136,7 @@ function render() {
       ${studyCollectionDialog()}
       ${renameGenerationDialog()}
       ${authDialog()}
+      ${feedbackThreadModal()}
       ${topToastMarkup()}
 
       <main class="workspace">
@@ -587,8 +591,13 @@ function attachEvents(activeGeneration) {
   document.getElementById("feedbackReplyBody")?.addEventListener("input", (event) => {
     feedbackReplyDraft = event.target.value;
   });
+  document.getElementById("feedbackLikeBtn")?.addEventListener("click", handleFeedbackLike);
+  document.getElementById("closeFeedbackThreadDialogBtn")?.addEventListener("click", closeFeedbackThreadDialog);
+  document.getElementById("feedbackThreadDialogBackdrop")?.addEventListener("click", (event) => {
+    if (event.target.id === "feedbackThreadDialogBackdrop") closeFeedbackThreadDialog();
+  });
   document.getElementById("feedbackRefreshBtn")?.addEventListener("click", () => {
-    refreshFeedbackBoard({ keepSelection: true, loadThread: true });
+    refreshFeedbackBoard({ keepSelection: true, loadThread: isFeedbackThreadModalOpen });
   });
 
   document.querySelectorAll("[data-feedback-id]").forEach((button) => {
@@ -751,11 +760,11 @@ function openFeedbackCenter() {
   render();
 
   if (!feedbackLoaded) {
-    refreshFeedbackBoard({ keepSelection: true, loadThread: true });
+    refreshFeedbackBoard({ keepSelection: true, loadThread: false });
     return;
   }
 
-  if (!activeFeedbackThread && activeFeedbackId) {
+  if (isFeedbackThreadModalOpen && !activeFeedbackThread && activeFeedbackId) {
     loadFeedbackThread(activeFeedbackId);
   }
 }
@@ -771,8 +780,8 @@ async function refreshFeedbackBoard({ keepSelection = true, loadThread = true, q
     feedbackLoaded = true;
     feedbackError = "";
 
-    if (!keepSelection || !feedbackItems.some((item) => item.id === activeFeedbackId)) {
-      activeFeedbackId = feedbackItems[0]?.id || "";
+    if (!keepSelection || (activeFeedbackId && !feedbackItems.some((item) => item.id === activeFeedbackId))) {
+      activeFeedbackId = "";
       activeFeedbackThread = null;
     }
 
@@ -820,7 +829,14 @@ async function loadFeedbackThread(feedbackId, { quiet = false } = {}) {
 
 function openFeedbackThread(feedbackId) {
   workspaceMode = "feedback";
+  isFeedbackThreadModalOpen = true;
   loadFeedbackThread(feedbackId);
+}
+
+function closeFeedbackThreadDialog() {
+  isFeedbackThreadModalOpen = false;
+  feedbackReplyDraft = "";
+  render();
 }
 
 async function handleFeedbackSubmit(event) {
@@ -849,6 +865,7 @@ async function handleFeedbackSubmit(event) {
     feedbackViewer = normalizeFeedbackViewer(data.viewer);
     activeFeedbackId = data.thread?.id || activeFeedbackId;
     activeFeedbackThread = data.thread || activeFeedbackThread;
+    isFeedbackThreadModalOpen = Boolean(data.thread);
     feedbackLoaded = true;
     feedbackDraftTitle = "";
     feedbackDraftBody = "";
@@ -888,7 +905,7 @@ async function handleFeedbackReplySubmit(event) {
     feedbackViewer = normalizeFeedbackViewer(data.viewer);
     activeFeedbackThread = data.thread || activeFeedbackThread;
     feedbackReplyDraft = "";
-    feedbackNotice = t("开发者回复已发布。", "Developer reply posted.");
+    feedbackNotice = t("回复已发布。", "Reply posted.");
   } catch (error) {
     feedbackError = error.message;
   }
@@ -897,10 +914,60 @@ async function handleFeedbackReplySubmit(event) {
   render();
 }
 
+async function handleFeedbackLike() {
+  if (!activeFeedbackId || feedbackLikedIds.has(activeFeedbackId)) return;
+
+  const likedId = activeFeedbackId;
+  feedbackLikedIds.add(likedId);
+  saveFeedbackLikedIds();
+  incrementFeedbackLikeCount(likedId);
+  render();
+
+  try {
+    const data = await apiJson("/api/feedback", {
+      method: "POST",
+      body: { threadId: likedId, action: "like" }
+    });
+
+    feedbackItems = Array.isArray(data.items) ? data.items : feedbackItems;
+    feedbackViewer = normalizeFeedbackViewer(data.viewer);
+    activeFeedbackThread = data.thread || activeFeedbackThread;
+    feedbackError = "";
+  } catch (error) {
+    feedbackLikedIds.delete(likedId);
+    saveFeedbackLikedIds();
+    decrementFeedbackLikeCount(likedId);
+    feedbackError = error.message;
+  }
+
+  render();
+}
+
+function incrementFeedbackLikeCount(threadId) {
+  updateFeedbackLikeCount(threadId, 1);
+}
+
+function decrementFeedbackLikeCount(threadId) {
+  updateFeedbackLikeCount(threadId, -1);
+}
+
+function updateFeedbackLikeCount(threadId, delta) {
+  feedbackItems = feedbackItems.map((item) => (
+    item.id === threadId ? { ...item, likeCount: Math.max(0, Number(item.likeCount || 0) + delta) } : item
+  ));
+  if (activeFeedbackThread?.id === threadId) {
+    activeFeedbackThread = {
+      ...activeFeedbackThread,
+      likeCount: Math.max(0, Number(activeFeedbackThread.likeCount || 0) + delta)
+    };
+  }
+}
+
 function normalizeFeedbackViewer(viewer) {
   return {
     authenticated: Boolean(viewer?.authenticated),
     canReply: Boolean(viewer?.canReply),
+    isDeveloper: Boolean(viewer?.isDeveloper),
     email: String(viewer?.email || "")
   };
 }
@@ -2539,44 +2606,34 @@ function feedbackCenterPanel() {
     ${feedbackError ? `<p class="feedback-banner error">${escapeHtml(feedbackError)}</p>` : ""}
     ${feedbackNotice ? `<p class="feedback-banner success">${escapeHtml(feedbackNotice)}</p>` : ""}
     <div class="feedback-hub">
-      <div class="feedback-board">
-        <form class="feedback-compose" id="feedbackForm">
-          <div class="feedback-compose-head">
-            <div>
-              <strong>${t("匿名发帖", "Post anonymously")}</strong>
-            </div>
-          </div>
-          <input id="feedbackTitle" maxlength="90" placeholder="${t("标题", "Title")}" value="${escapeAttr(feedbackDraftTitle)}" />
-          <textarea id="feedbackBody" maxlength="1800" placeholder="${t("写下你的建议、体验问题，或你希望我们下一步做什么。", "Write your suggestion, pain point, or what you want us to build next.")}">${escapeHtml(feedbackDraftBody)}</textarea>
-          <div class="feedback-compose-actions">
-            <button class="primary-action" type="submit" ${feedbackSubmitting ? "disabled" : ""}>
-              ${icon(feedbackSubmitting ? "loader-2" : "send", feedbackSubmitting ? "spin" : "")}
-              <span>${feedbackSubmitting ? t("发布中", "Posting") : t("发布反馈", "Post feedback")}</span>
-            </button>
-          </div>
-        </form>
-
-        <div class="feedback-list-panel">
-          <div class="feedback-list-head">
-            <strong>${t("反馈帖", "Feedback threads")}</strong>
-            <span>${escapeHtml(t(`${feedbackItems.length} 条`, `${feedbackItems.length} thread(s)`))}</span>
-          </div>
-          <div class="feedback-list">
-            ${feedbackLoading && !feedbackItems.length
-              ? `<p class="feedback-inline-status">${escapeHtml(t("正在加载反馈…", "Loading feedback…"))}</p>`
-              : (feedbackItems.length
-                ? feedbackItems.map(feedbackListItem).join("")
-                : emptyState("", t("还没有反馈帖", "No feedback yet"), "", true))}
+      <form class="feedback-compose" id="feedbackForm">
+        <div class="feedback-compose-head">
+          <div>
+            <strong>${t("匿名发帖", "Post anonymously")}</strong>
           </div>
         </div>
-      </div>
+        <input id="feedbackTitle" maxlength="90" placeholder="${t("标题", "Title")}" value="${escapeAttr(feedbackDraftTitle)}" />
+        <textarea id="feedbackBody" maxlength="1800" placeholder="${t("写下你的建议、体验问题，或你希望我们下一步做什么。", "Write your suggestion, pain point, or what you want us to build next.")}">${escapeHtml(feedbackDraftBody)}</textarea>
+        <div class="feedback-compose-actions">
+          <button class="primary-action" type="submit" ${feedbackSubmitting ? "disabled" : ""}>
+            ${icon(feedbackSubmitting ? "loader-2" : "send", feedbackSubmitting ? "spin" : "")}
+            <span>${feedbackSubmitting ? t("发布中", "Posting") : t("发布反馈", "Post feedback")}</span>
+          </button>
+        </div>
+      </form>
 
-      <div class="feedback-thread-panel">
-        ${feedbackThreadLoading
-          ? `<p class="feedback-inline-status">${escapeHtml(t("正在打开帖子…", "Opening thread…"))}</p>`
-          : (activeFeedbackThread
-            ? feedbackThreadView(activeFeedbackThread)
-            : emptyState("message-circle-more", t("请选择一条反馈帖", "Select a feedback thread"), t("点开左侧帖子，就能查看原帖和开发者回复。", "Open a thread on the left to read the post and developer replies."), false))}
+      <div class="feedback-list-panel">
+        <div class="feedback-list-head">
+          <strong>${t("反馈帖", "Feedback threads")}</strong>
+          <span>${escapeHtml(t(`${feedbackItems.length} 条`, `${feedbackItems.length} thread(s)`))}</span>
+        </div>
+        <div class="feedback-list">
+          ${feedbackLoading && !feedbackItems.length
+            ? `<p class="feedback-inline-status">${escapeHtml(t("正在加载反馈…", "Loading feedback…"))}</p>`
+            : (feedbackItems.length
+              ? feedbackItems.map(feedbackListItem).join("")
+              : emptyState("", t("还没有反馈帖", "No feedback yet"), "", true))}
+        </div>
       </div>
     </div>
   `;
@@ -2592,19 +2649,46 @@ function feedbackListItem(item) {
       <p>${escapeHtml(feedbackPreviewText(item.body))}</p>
       <div class="feedback-item-meta">
         <span>${escapeHtml(t("匿名用户", "Anonymous"))}</span>
+        <span>${escapeHtml(t(`${item.likeCount || 0} 赞`, `${item.likeCount || 0} likes`))}</span>
         <span>${escapeHtml(t(`${item.replyCount || 0} 条回复`, `${item.replyCount || 0} replies`))}</span>
       </div>
     </button>
   `;
 }
 
+function feedbackThreadModal() {
+  if (!isFeedbackThreadModalOpen) return "";
+
+  return `
+    <div class="modal-backdrop" id="feedbackThreadDialogBackdrop" role="presentation">
+      <section class="modal-card feedback-thread-dialog" role="dialog" aria-modal="true" aria-labelledby="feedbackThreadDialogTitle">
+        <div class="modal-heading">
+          <div>
+            <h2 id="feedbackThreadDialogTitle">${t("反馈详情", "Feedback Detail")}</h2>
+          </div>
+          <button class="icon-button quiet" id="closeFeedbackThreadDialogBtn" type="button" aria-label="${t("关闭", "Close")}">
+            ${icon("x")}
+          </button>
+        </div>
+        <div class="feedback-thread-dialog-body">
+          ${feedbackThreadLoading
+            ? `<p class="feedback-inline-status">${escapeHtml(t("正在打开帖子…", "Opening thread…"))}</p>`
+            : (activeFeedbackThread
+              ? feedbackThreadView(activeFeedbackThread)
+              : emptyState("", t("帖子不存在", "Thread not found"), "", true))}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 function feedbackThreadView(thread) {
   const replies = Array.isArray(thread.replies) ? thread.replies : [];
+  const liked = feedbackLikedIds.has(thread.id);
   return `
     <div class="feedback-thread-card">
       <div class="feedback-thread-header">
         <div>
-          <p class="eyebrow">${t("帖子详情", "Thread detail")}</p>
           <h3>${escapeHtml(thread.title)}</h3>
         </div>
         <time>${escapeHtml(formatDate(thread.createdAt))}</time>
@@ -2618,33 +2702,34 @@ function feedbackThreadView(thread) {
         <div class="feedback-message-body">${renderFeedbackText(thread.body)}</div>
       </article>
 
+      <div class="feedback-thread-actions">
+        <button class="secondary-action feedback-like-button ${liked ? "active" : ""}" id="feedbackLikeBtn" type="button" ${liked ? "disabled" : ""}>
+          ${icon("thumbs-up")}<span>${escapeHtml(t(`${thread.likeCount || 0} 赞`, `${thread.likeCount || 0} likes`))}</span>
+        </button>
+      </div>
+
       <div class="feedback-thread-replies">
         <div class="feedback-thread-subhead">
-          <strong>${t("开发者回复", "Developer replies")}</strong>
+          <strong>${t("回复", "Replies")}</strong>
           <span>${escapeHtml(t(`${replies.length} 条`, `${replies.length} reply${replies.length === 1 ? "" : "ies"}`))}</span>
         </div>
         ${replies.length
           ? replies.map(feedbackReplyItem).join("")
-          : `<p class="feedback-inline-status">${escapeHtml(t("开发者还没有回复这条反馈。", "No developer reply on this thread yet."))}</p>`}
+          : `<p class="feedback-inline-status">${escapeHtml(t("还没有回复。", "No replies yet."))}</p>`}
       </div>
 
-      ${feedbackViewer.canReply
-        ? `
-          <form class="feedback-reply-form" id="feedbackReplyForm">
-            <label>
-              <span>${t("开发者回复", "Developer reply")}</span>
-              <textarea id="feedbackReplyBody" maxlength="1800" placeholder="${t("以开发者身份回复这条反馈。", "Reply to this feedback as the developer.")}">${escapeHtml(feedbackReplyDraft)}</textarea>
-            </label>
-            <div class="feedback-compose-actions">
-              <span>${escapeHtml(feedbackViewer.email || t("已登录开发者", "Signed-in developer"))}</span>
-              <button class="primary-action" type="submit" ${feedbackReplySubmitting ? "disabled" : ""}>
-                ${icon(feedbackReplySubmitting ? "loader-2" : "corner-down-left", feedbackReplySubmitting ? "spin" : "")}
-                <span>${feedbackReplySubmitting ? t("回复中", "Replying") : t("发布回复", "Post reply")}</span>
-              </button>
-            </div>
-          </form>
-        `
-        : `<p class="feedback-thread-note">${escapeHtml(t("开发者登录后可以在这里回复；普通用户可以匿名发帖和查看所有回复。", "The developer can reply here after signing in; visitors can still post anonymously and read every reply."))}</p>`}
+      <form class="feedback-reply-form" id="feedbackReplyForm">
+        <label>
+          <span>${t("回复", "Reply")}</span>
+          <textarea id="feedbackReplyBody" maxlength="1800" placeholder="${t("写下你的回复。", "Write your reply.")}">${escapeHtml(feedbackReplyDraft)}</textarea>
+        </label>
+        <div class="feedback-compose-actions">
+          <button class="primary-action" type="submit" ${feedbackReplySubmitting ? "disabled" : ""}>
+            ${icon(feedbackReplySubmitting ? "loader-2" : "corner-down-left", feedbackReplySubmitting ? "spin" : "")}
+            <span>${feedbackReplySubmitting ? t("回复中", "Replying") : t("发布回复", "Post reply")}</span>
+          </button>
+        </div>
+      </form>
     </div>
   `;
 }
@@ -2653,12 +2738,16 @@ function feedbackReplyItem(reply) {
   return `
     <article class="feedback-message reply">
       <div class="feedback-message-head">
-        <strong>${escapeHtml(reply.authorLabel || t("开发者", "Developer"))}</strong>
+        <strong>${escapeHtml(feedbackAuthorLabel(reply.authorLabel))}</strong>
         <span>${escapeHtml(formatDate(reply.createdAt))}</span>
       </div>
       <div class="feedback-message-body">${renderFeedbackText(reply.body)}</div>
     </article>
   `;
+}
+
+function feedbackAuthorLabel(label) {
+  return String(label || "").toLowerCase() === "developer" ? t("开发者", "Developer") : t("匿名用户", "Anonymous");
 }
 
 function feedbackPreviewText(value = "") {
@@ -3761,6 +3850,23 @@ function loadUiLanguage() {
     return localStorage.getItem(UI_LANGUAGE_KEY) === "en" ? "en" : "zh";
   } catch {
     return "zh";
+  }
+}
+
+function loadFeedbackLikedIds() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(FEEDBACK_LIKES_KEY) || "[]");
+    return new Set(Array.isArray(raw) ? raw.map(String).filter(Boolean) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveFeedbackLikedIds() {
+  try {
+    localStorage.setItem(FEEDBACK_LIKES_KEY, JSON.stringify(Array.from(feedbackLikedIds)));
+  } catch {
+    // Likes are a small local convenience; failing to persist them should not block feedback.
   }
 }
 
