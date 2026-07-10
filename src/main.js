@@ -442,7 +442,7 @@ function attachEvents(activeGeneration) {
       } else {
         visibleAnswerKeys.delete(checkbox.dataset.answerToggle);
       }
-      render();
+      renderPreservingOutputScroll();
     });
   });
 
@@ -1094,6 +1094,24 @@ function queueScrollToPendingTarget() {
     element.classList.add("focus-flash");
     window.setTimeout(() => element.classList.remove("focus-flash"), 1400);
   });
+}
+
+function renderPreservingOutputScroll() {
+  const scroller = document.querySelector(".output-panel > .generated-stack");
+  const scrollTop = scroller?.scrollTop || 0;
+  const scrollLeft = scroller?.scrollLeft || 0;
+
+  render();
+
+  const restore = () => {
+    const nextScroller = document.querySelector(".output-panel > .generated-stack");
+    if (!nextScroller) return;
+    nextScroller.scrollTop = scrollTop;
+    nextScroller.scrollLeft = scrollLeft;
+  };
+
+  window.requestAnimationFrame(restore);
+  window.setTimeout(restore, 80);
 }
 
 function buildWorkspaceSearchResults(query, courseDocuments, courseGenerations) {
