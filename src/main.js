@@ -2530,8 +2530,7 @@ function feedbackCenterPanel() {
   return `
     <div class="panel-heading output-heading feedback-heading">
       <div>
-        <p class="eyebrow">${t("意见反馈", "Feedback")}</p>
-        <h2>${t("匿名建议与开发者回复", "Anonymous feedback and developer replies")}</h2>
+        <h2>${t("意见反馈", "Feedback")}</h2>
       </div>
       <button class="secondary-action" id="feedbackRefreshBtn" type="button">
         ${icon("refresh-cw")}<span>${t("刷新", "Refresh")}</span>
@@ -2545,13 +2544,11 @@ function feedbackCenterPanel() {
           <div class="feedback-compose-head">
             <div>
               <strong>${t("匿名发帖", "Post anonymously")}</strong>
-              <small>${t("无需登录，所有访问者都能看到你的建议。", "No login required. Every visitor can read your suggestion.")}</small>
             </div>
           </div>
-          <input id="feedbackTitle" maxlength="90" placeholder="${t("标题，例如：希望增加错题收藏", "Title, for example: Please add saved mistakes")}" value="${escapeAttr(feedbackDraftTitle)}" />
+          <input id="feedbackTitle" maxlength="90" placeholder="${t("标题", "Title")}" value="${escapeAttr(feedbackDraftTitle)}" />
           <textarea id="feedbackBody" maxlength="1800" placeholder="${t("写下你的建议、体验问题，或你希望我们下一步做什么。", "Write your suggestion, pain point, or what you want us to build next.")}">${escapeHtml(feedbackDraftBody)}</textarea>
           <div class="feedback-compose-actions">
-            <span>${escapeHtml(t("匿名公开显示", "Posted publicly and anonymously"))}</span>
             <button class="primary-action" type="submit" ${feedbackSubmitting ? "disabled" : ""}>
               ${icon(feedbackSubmitting ? "loader-2" : "send", feedbackSubmitting ? "spin" : "")}
               <span>${feedbackSubmitting ? t("发布中", "Posting") : t("发布反馈", "Post feedback")}</span>
@@ -2569,7 +2566,7 @@ function feedbackCenterPanel() {
               ? `<p class="feedback-inline-status">${escapeHtml(t("正在加载反馈…", "Loading feedback…"))}</p>`
               : (feedbackItems.length
                 ? feedbackItems.map(feedbackListItem).join("")
-                : emptyState("messages-square", t("还没有反馈帖", "No feedback yet"), t("第一个建议会直接出现在这里。", "The first suggestion will appear here."), true))}
+                : emptyState("", t("还没有反馈帖", "No feedback yet"), "", true))}
           </div>
         </div>
       </div>

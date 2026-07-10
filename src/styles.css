@@ -1351,11 +1351,15 @@ h2 {
 
 .feedback-compose-actions {
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
+.feedback-compose-head strong,
 .feedback-list-head strong,
 .feedback-thread-subhead strong {
   font-size: 14px;
+  font-weight: 900;
+  line-height: 1.2;
 }
 
 .feedback-list {
