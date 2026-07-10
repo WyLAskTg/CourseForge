@@ -596,10 +596,6 @@ function attachEvents(activeGeneration) {
   document.getElementById("feedbackThreadDialogBackdrop")?.addEventListener("click", (event) => {
     if (event.target.id === "feedbackThreadDialogBackdrop") closeFeedbackThreadDialog();
   });
-  document.getElementById("feedbackRefreshBtn")?.addEventListener("click", () => {
-    refreshFeedbackBoard({ keepSelection: true, loadThread: isFeedbackThreadModalOpen });
-  });
-
   document.querySelectorAll("[data-feedback-id]").forEach((button) => {
     button.addEventListener("click", () => {
       openFeedbackThread(button.dataset.feedbackId);
@@ -2599,9 +2595,6 @@ function feedbackCenterPanel() {
       <div>
         <h2>${t("意见反馈", "Feedback")}</h2>
       </div>
-      <button class="secondary-action" id="feedbackRefreshBtn" type="button">
-        ${icon("refresh-cw")}<span>${t("刷新", "Refresh")}</span>
-      </button>
     </div>
     ${feedbackError ? `<p class="feedback-banner error">${escapeHtml(feedbackError)}</p>` : ""}
     ${feedbackNotice ? `<p class="feedback-banner success">${escapeHtml(feedbackNotice)}</p>` : ""}

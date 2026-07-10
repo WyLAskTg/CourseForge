@@ -1298,6 +1298,8 @@ h2 {
 
 .feedback-heading {
   align-items: flex-start;
+  margin-bottom: 8px;
+  padding-bottom: 0;
 }
 
 .feedback-banner {
@@ -1347,6 +1349,10 @@ h2 {
 .feedback-compose {
   align-content: start;
   gap: 10px;
+}
+
+.feedback-list-panel {
+  align-content: start;
 }
 
 .feedback-compose textarea,
