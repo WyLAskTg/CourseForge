@@ -303,34 +303,42 @@ function render() {
         <section class="study-board">
           <div class="memory-section-head">
             <div>
-              <h3>${t("收藏与错题集", "Favorites and wrong questions")}</h3>
+              <h3>${t("收藏夹", "Favorites")}</h3>
             </div>
+            <button class="spotlight-link" type="button" data-create-study-collection="favorite">${t("新建", "New")}</button>
           </div>
-          <div class="study-board-columns">
-            <div class="study-board-section">
-              <div class="study-section-head">
-                <strong>${t("收藏夹", "Favorites")}</strong>
-                <button class="spotlight-link" type="button" data-create-study-collection="favorite">${t("新建", "New")}</button>
-              </div>
-              <div class="study-collection-list">
-                ${favoriteCollections.length
-                  ? favoriteCollections.map((collection) => renderStudyCollectionItem(collection, questionReferences, activeStudyCollectionId)).join("")
-                  : `<p class="feedback-inline-status">${escapeHtml(t("新建收藏夹后，可把题目归类保存。", "Create a folder to organize saved questions."))}</p>`}
-              </div>
-            </div>
-            <div class="study-board-section">
-              <div class="study-section-head">
-                <strong>${t("错题集", "Wrong questions")}</strong>
-                <button class="spotlight-link" type="button" data-create-study-collection="wrong">${t("新建", "New")}</button>
-              </div>
-              <div class="study-collection-list">
-                ${wrongCollections.length
-                  ? wrongCollections.map((collection) => renderStudyCollectionItem(collection, questionReferences, activeStudyCollectionId)).join("")
-                  : `<p class="feedback-inline-status">${escapeHtml(t("新建错题集后，可把题目按薄弱点归类。", "Create a wrong-question set to group weak spots."))}</p>`}
-              </div>
-            </div>
+          <div class="study-collection-list">
+            ${favoriteCollections.length
+              ? favoriteCollections.map((collection) => renderStudyCollectionItem(collection, questionReferences, activeStudyCollectionId)).join("")
+              : `<p class="feedback-inline-status">${escapeHtml(t("新建收藏夹后，可把题目归类保存。", "Create a folder to organize saved questions."))}</p>`}
           </div>
-          ${activeStudyCollection ? `
+          ${activeStudyCollection?.type === "favorite" ? `
+            <div class="study-collection-detail">
+              <div class="study-section-head">
+                <strong>${escapeHtml(activeStudyCollection.name)}</strong>
+                <button class="spotlight-link" type="button" data-close-study-collection="1">${t("收起", "Collapse")}</button>
+              </div>
+              <div class="study-link-list">
+                ${activeStudyCollectionRefs.length
+                  ? activeStudyCollectionRefs.map(renderStudyLinkItem).join("")
+                  : `<p class="feedback-inline-status">${escapeHtml(t("这个集合里还没有题目。", "This collection has no questions yet."))}</p>`}
+              </div>
+            </div>
+          ` : ""}
+        </section>
+        <section class="study-board">
+          <div class="memory-section-head">
+            <div>
+              <h3>${t("错题集", "Wrong Questions")}</h3>
+            </div>
+            <button class="spotlight-link" type="button" data-create-study-collection="wrong">${t("新建", "New")}</button>
+          </div>
+          <div class="study-collection-list">
+            ${wrongCollections.length
+              ? wrongCollections.map((collection) => renderStudyCollectionItem(collection, questionReferences, activeStudyCollectionId)).join("")
+              : `<p class="feedback-inline-status">${escapeHtml(t("新建错题集后，可把题目按薄弱点归类。", "Create a wrong-question set to group weak spots."))}</p>`}
+          </div>
+          ${activeStudyCollection?.type === "wrong" ? `
             <div class="study-collection-detail">
               <div class="study-section-head">
                 <strong>${escapeHtml(activeStudyCollection.name)}</strong>
