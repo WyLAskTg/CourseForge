@@ -97,6 +97,7 @@ let isCourseDialogOpen = false;
 let studyCollectionDialogType = "";
 let renameGenerationId = "";
 let isAuthDialogOpen = false;
+let isSettingsDialogOpen = false;
 let isFeedbackThreadModalOpen = false;
 let topToast = null;
 let topToastTimer = null;
@@ -120,7 +121,6 @@ function render() {
   const usesAssessmentSettings = isAssessmentTask(selectedTask);
   const taskMode = usesAssessmentSettings ? "assessment" : "outline";
   const taskTitle = t("生成设置", "Generation Settings");
-  const showingFeedback = workspaceMode === "feedback";
   const questionReferences = collectQuestionReferences(courseGenerations);
   const courseStudyCollections = getCourseStudyCollections(activeCourse?.id);
   const favoriteCollections = courseStudyCollections.filter((collection) => collection.type === "favorite");
@@ -136,6 +136,7 @@ function render() {
       ${studyCollectionDialog()}
       ${renameGenerationDialog()}
       ${authDialog()}
+      ${settingsDialog()}
       ${feedbackThreadModal()}
       ${topToastMarkup()}
 
@@ -165,9 +166,6 @@ function render() {
                 ${option("en", uiLanguage, "English")}
               </select>
             </label>
-            <button class="secondary-action ${showingFeedback ? "active" : ""}" id="feedbackCenterBtn" type="button">
-              ${icon(showingFeedback ? "book-open" : "messages-square")}<span>${showingFeedback ? t("返回学习区", "Back to Study") : t("意见反馈", "Feedback")}</span>
-            </button>
             ${blockedBadge(safety)}
           </div>
         </header>
@@ -255,18 +253,14 @@ function render() {
             </section>
           </div>
 
-          <section class="panel output-panel ${showingFeedback ? "feedback-mode" : ""}">
-            ${showingFeedback
-              ? feedbackCenterPanel()
-              : `
-                <div class="panel-heading output-heading">
-                  <div>
-                    <h2>${escapeHtml(displayBilingual(activeGeneration?.title || t("生成结果", "Output")))}</h2>
-                  </div>
-                  ${blockedBadge(activeGeneration?.output?.safety || safety)}
-                </div>
-                ${activeGeneration ? generatedOutput(activeGeneration) : emptyState("", t("暂无结果", "No output yet"), "", false)}
-              `}
+          <section class="panel output-panel">
+            <div class="panel-heading output-heading">
+              <div>
+                <h2>${escapeHtml(displayBilingual(activeGeneration?.title || t("生成结果", "Output")))}</h2>
+              </div>
+              ${blockedBadge(activeGeneration?.output?.safety || safety)}
+            </div>
+            ${activeGeneration ? generatedOutput(activeGeneration) : emptyState("", t("暂无结果", "No output yet"), "", false)}
           </section>
         </section>
       </main>
@@ -364,6 +358,9 @@ function render() {
           </div>
         </section>
       </aside>
+      <button class="settings-launcher" id="openSettingsBtn" type="button" aria-label="${t("打开设置", "Open settings")}">
+        ${icon("settings")}<span>${t("设置", "Settings")}</span>
+      </button>
     </div>
   `;
 
@@ -383,13 +380,23 @@ function attachEvents(activeGeneration) {
     if (event.target.id === "authDialogBackdrop") closeAuthDialog();
   });
   document.getElementById("openCourseDialogBtn")?.addEventListener("click", openCourseDialog);
+  document.getElementById("openSettingsBtn")?.addEventListener("click", openSettingsDialog);
+  document.getElementById("closeSettingsDialogBtn")?.addEventListener("click", closeSettingsDialog);
+  document.getElementById("settingsDialogBackdrop")?.addEventListener("click", (event) => {
+    if (event.target.id === "settingsDialogBackdrop") closeSettingsDialog();
+  });
+  document.getElementById("settingsOpenAuthDialogBtn")?.addEventListener("click", () => {
+    isSettingsDialogOpen = false;
+    openAuthDialog();
+  });
+  document.getElementById("settingsSyncNowBtn")?.addEventListener("click", () => pushCloudState({ renderAfter: true }));
+  document.getElementById("settingsLogoutBtn")?.addEventListener("click", handleLogout);
   document.getElementById("courseDialogForm")?.addEventListener("submit", handleCreateCourse);
   document.getElementById("closeCourseDialogBtn")?.addEventListener("click", closeCourseDialog);
   document.getElementById("cancelCourseDialogBtn")?.addEventListener("click", closeCourseDialog);
   document.getElementById("courseDialogBackdrop")?.addEventListener("click", (event) => {
     if (event.target.id === "courseDialogBackdrop") closeCourseDialog();
   });
-  document.getElementById("feedbackCenterBtn")?.addEventListener("click", toggleFeedbackCenter);
   document.getElementById("courseDialogName")?.addEventListener("input", (event) => {
     event.target.classList.remove("needs-value");
   });
@@ -584,8 +591,11 @@ function attachEvents(activeGeneration) {
   document.getElementById("feedbackTitle")?.addEventListener("input", (event) => {
     feedbackDraftTitle = event.target.value;
   });
-  document.getElementById("feedbackBody")?.addEventListener("input", (event) => {
+  const feedbackBodyInput = document.getElementById("feedbackBody");
+  autoResizeTextarea(feedbackBodyInput);
+  feedbackBodyInput?.addEventListener("input", (event) => {
     feedbackDraftBody = event.target.value;
+    autoResizeTextarea(event.target);
   });
   document.getElementById("feedbackReplyForm")?.addEventListener("submit", handleFeedbackReplySubmit);
   document.getElementById("feedbackReplyBody")?.addEventListener("input", (event) => {
@@ -824,7 +834,7 @@ async function loadFeedbackThread(feedbackId, { quiet = false } = {}) {
 }
 
 function openFeedbackThread(feedbackId) {
-  workspaceMode = "feedback";
+  isSettingsDialogOpen = true;
   isFeedbackThreadModalOpen = true;
   loadFeedbackThread(feedbackId);
 }
@@ -866,7 +876,7 @@ async function handleFeedbackSubmit(event) {
     feedbackDraftTitle = "";
     feedbackDraftBody = "";
     feedbackNotice = t("反馈已发布，感谢你帮我们把它打磨得更好。", "Feedback posted. Thank you for helping improve it.");
-    workspaceMode = "feedback";
+    isSettingsDialogOpen = true;
   } catch (error) {
     feedbackError = error.message;
   }
@@ -1256,6 +1266,19 @@ function openAuthDialog() {
 
 function closeAuthDialog() {
   isAuthDialogOpen = false;
+  render();
+}
+
+function openSettingsDialog() {
+  isSettingsDialogOpen = true;
+  render();
+  if (!feedbackLoaded) {
+    refreshFeedbackBoard({ keepSelection: true, loadThread: false });
+  }
+}
+
+function closeSettingsDialog() {
+  isSettingsDialogOpen = false;
   render();
 }
 
@@ -2379,6 +2402,168 @@ function authDialog() {
   `;
 }
 
+function settingsDialog() {
+  if (!isSettingsDialogOpen) return "";
+
+  const allQuestionReferences = collectQuestionReferences(state.generations);
+  const documents = [...state.documents].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  const generations = [...state.generations].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  const favorites = state.studyCollections.filter((collection) => collection.type === "favorite");
+  const wrongSets = state.studyCollections.filter((collection) => collection.type === "wrong");
+
+  return `
+    <div class="modal-backdrop settings-backdrop" id="settingsDialogBackdrop" role="presentation">
+      <section class="modal-card settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settingsDialogTitle">
+        <div class="modal-heading settings-dialog-heading">
+          <div>
+            <h2 id="settingsDialogTitle">${t("设置", "Settings")}</h2>
+          </div>
+          <button class="icon-button quiet" id="closeSettingsDialogBtn" type="button" aria-label="${t("关闭", "Close")}">
+            ${icon("x")}
+          </button>
+        </div>
+        <div class="settings-dialog-body">
+          <section class="settings-admin-card">
+            <div class="settings-card-head">
+              <h3>${t("账号信息", "Account")}</h3>
+            </div>
+            ${settingsAccountPanel()}
+          </section>
+
+          <section class="settings-admin-card">
+            <div class="settings-card-head">
+              <h3>${t("上传资料", "Uploaded Materials")}</h3>
+              <span>${escapeHtml(t(`${documents.length} 份`, `${documents.length} file(s)`))}</span>
+            </div>
+            <div class="settings-summary-list">
+              ${documents.length
+                ? documents.map(settingsMaterialRow).join("")
+                : settingsEmptyLine(t("还没有上传资料", "No uploaded materials yet"))}
+            </div>
+          </section>
+
+          <section class="settings-admin-card">
+            <div class="settings-card-head">
+              <h3>${t("生成历史", "Generation History")}</h3>
+              <span>${escapeHtml(t(`${generations.length} 条`, `${generations.length} item(s)`))}</span>
+            </div>
+            <div class="settings-summary-list">
+              ${generations.length
+                ? generations.map(settingsGenerationRow).join("")
+                : settingsEmptyLine(t("还没有生成历史", "No generation history yet"))}
+            </div>
+          </section>
+
+          <section class="settings-admin-card">
+            <div class="settings-card-head">
+              <h3>${t("收藏夹", "Favorites")}</h3>
+              <span>${escapeHtml(t(`${favorites.length} 个`, `${favorites.length} folder(s)`))}</span>
+            </div>
+            <div class="settings-summary-list">
+              ${favorites.length
+                ? favorites.map((collection) => settingsCollectionRow(collection, allQuestionReferences)).join("")
+                : settingsEmptyLine(t("还没有收藏夹", "No favorite folders yet"))}
+            </div>
+          </section>
+
+          <section class="settings-admin-card">
+            <div class="settings-card-head">
+              <h3>${t("错题集", "Wrong Question Sets")}</h3>
+              <span>${escapeHtml(t(`${wrongSets.length} 个`, `${wrongSets.length} set(s)`))}</span>
+            </div>
+            <div class="settings-summary-list">
+              ${wrongSets.length
+                ? wrongSets.map((collection) => settingsCollectionRow(collection, allQuestionReferences)).join("")
+                : settingsEmptyLine(t("还没有错题集", "No wrong-question sets yet"))}
+            </div>
+          </section>
+
+          <section class="settings-admin-card settings-feedback-card">
+            ${feedbackCenterPanel()}
+          </section>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function settingsAccountPanel() {
+  const statusText = cloudStatusText();
+  const detail = cloudStatusDetail();
+
+  if (!currentUser) {
+    return `
+      <div class="settings-account-stack">
+        <p class="settings-muted">${escapeHtml(t("当前未登录", "Not signed in"))}</p>
+        <p>${escapeHtml(detail)}</p>
+        <button class="create-course-button" id="settingsOpenAuthDialogBtn" type="button">
+          ${icon("log-in")}<span>${t("登录", "Log in")}</span>
+        </button>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="settings-account-stack">
+      <p class="settings-account-email">${escapeHtml(currentUser.email)}</p>
+      ${statusText ? `<span class="auth-status ${escapeAttr(cloudSyncStatus.level)}">${escapeHtml(statusText)}</span>` : ""}
+      <p>${escapeHtml(detail)}</p>
+      <div class="settings-inline-actions">
+        <button class="secondary-action" id="settingsSyncNowBtn" type="button">${t("立即同步", "Sync now")}</button>
+        <button class="secondary-action" id="settingsLogoutBtn" type="button">${t("登出", "Log out")}</button>
+      </div>
+    </div>
+  `;
+}
+
+function settingsMaterialRow(document) {
+  return `
+    <article class="settings-summary-row">
+      <div class="file-icon">${icon("file-text")}</div>
+      <div>
+        <strong>${escapeHtml(document.name)}</strong>
+        <span>${escapeHtml(courseName(document.courseId))} · ${escapeHtml(displayBilingual(document.type))} · ${formatBytes(document.size)}</span>
+      </div>
+      <time>${escapeHtml(formatDate(document.createdAt))}</time>
+    </article>
+  `;
+}
+
+function settingsGenerationRow(generation) {
+  return `
+    <article class="settings-summary-row">
+      <div class="file-icon">${icon("sparkles")}</div>
+      <div>
+        <strong>${escapeHtml(displayBilingual(generation.title))}</strong>
+        <span>${escapeHtml(courseName(generation.courseId))}</span>
+      </div>
+      <time>${escapeHtml(formatDate(generation.createdAt))}</time>
+    </article>
+  `;
+}
+
+function settingsCollectionRow(collection, questionReferences) {
+  const itemCount = resolveStudyCollectionItems(collection, questionReferences).length;
+  return `
+    <article class="settings-summary-row">
+      <div class="file-icon">${icon(collection.type === "favorite" ? "star" : "book-marked")}</div>
+      <div>
+        <strong>${escapeHtml(collection.name)}</strong>
+        <span>${escapeHtml(courseName(collection.courseId))} · ${escapeHtml(t(`${itemCount} 题`, `${itemCount} question(s)`))}</span>
+      </div>
+      <time>${escapeHtml(formatDate(collection.createdAt))}</time>
+    </article>
+  `;
+}
+
+function settingsEmptyLine(text) {
+  return `<p class="settings-empty-line">${escapeHtml(text)}</p>`;
+}
+
+function courseName(courseId) {
+  return state.courses.find((course) => course.id === courseId)?.name || t("未分类课程", "Uncategorized course");
+}
+
 function topToastMarkup() {
   if (!topToast) return "";
   const labels = {
@@ -2653,7 +2838,7 @@ function feedbackThreadModal() {
   if (!isFeedbackThreadModalOpen) return "";
 
   return `
-    <div class="modal-backdrop" id="feedbackThreadDialogBackdrop" role="presentation">
+    <div class="modal-backdrop feedback-thread-backdrop" id="feedbackThreadDialogBackdrop" role="presentation">
       <section class="modal-card feedback-thread-dialog" role="dialog" aria-modal="true" aria-labelledby="feedbackThreadDialogTitle">
         <div class="modal-heading">
           <div>
