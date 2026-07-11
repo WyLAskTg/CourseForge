@@ -1294,7 +1294,7 @@ function handleCreateCourse(event) {
   const name = input.value.trim();
   if (!name) {
     input.classList.add("needs-value");
-    input.placeholder = t("请输入课程主题或代码", "Enter a course topic or code");
+    input.placeholder = t("请输入课程标题或代码", "Enter a course title or code");
     input.focus();
     return;
   }
@@ -2262,8 +2262,7 @@ function courseDialog() {
       <section class="modal-card course-dialog" role="dialog" aria-modal="true" aria-labelledby="courseDialogTitle">
         <div class="modal-heading">
           <div>
-            <p class="eyebrow">${t("新课程", "New course")}</p>
-            <h2 id="courseDialogTitle">${t("创建课程", "Create Course")}</h2>
+            <h2 id="courseDialogTitle">${t("新课程", "New Course")}</h2>
           </div>
           <button class="icon-button quiet" id="closeCourseDialogBtn" type="button" aria-label="${t("关闭", "Close")}">
             ${icon("x")}
@@ -2271,8 +2270,8 @@ function courseDialog() {
         </div>
         <form class="modal-form" id="courseDialogForm">
           <label>
-            <span>${t("课程主题或代码", "Course topic or code")}</span>
-            <input id="courseDialogName" autocomplete="off" autofocus placeholder="${t("例如 MATH237 或 Linear Algebra", "Example: MATH237 or Linear Algebra")}" />
+            <span>${t("课程标题或代码", "Course title or code")}</span>
+            <input id="courseDialogName" autocomplete="off" autofocus />
           </label>
           <div class="modal-actions">
             <button class="secondary-action" id="cancelCourseDialogBtn" type="button">${t("取消", "Cancel")}</button>
