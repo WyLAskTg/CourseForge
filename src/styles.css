@@ -724,14 +724,23 @@ input.needs-value::placeholder {
 }
 
 .language-control {
-  display: grid;
-  gap: 4px;
-  min-width: 132px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
-.language-control span {
-  color: var(--muted);
-  font-size: 11px;
+.language-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  color: var(--teal-dark);
+  border: 1px solid rgba(15, 118, 110, 0.22);
+  border-radius: 8px;
+  background: var(--teal-soft);
+  font-size: 15px;
   font-weight: 900;
 }
 

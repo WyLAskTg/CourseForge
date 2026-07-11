@@ -150,17 +150,13 @@ function render() {
             </div>
           </div>
           <div class="header-actions">
-            ${currentUser ? `
-              <button class="secondary-action" id="logoutBtn" type="button">
-                ${icon("log-out")}<span>${t("登出", "Log out")}</span>
-              </button>
-            ` : `
+            ${currentUser ? "" : `
               <button class="secondary-action" id="openAuthDialogBtn" type="button">
                 ${icon("log-in")}<span>${t("登录", "Log in")}</span>
               </button>
             `}
             <label class="language-control">
-              <span>${t("语言", "Language")}</span>
+              <span class="language-symbol" aria-hidden="true">文A</span>
               <select id="languageSelect" aria-label="${t("界面语言", "Interface language")}">
                 ${option("zh", uiLanguage, "中文")}
                 ${option("en", uiLanguage, "English")}
