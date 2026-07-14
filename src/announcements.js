@@ -4,6 +4,6 @@ export const PRODUCT_ANNOUNCEMENTS = [
     id: "update-2026-07-14-overview",
     date: "2026-07-14",
     title: "常规更新 / Regular Update",
-    body: "优化了设置界面布局。 / Optimized the layout of the settings interface."
+    body: "优化了设置界面和意见反馈功能。 / Optimized the settings interface and feedback function."
   },
 ];
