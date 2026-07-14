@@ -448,7 +448,7 @@ textarea:focus {
 }
 
 .settings-dialog {
-  width: min(1180px, calc(100vw - 36px));
+  width: min(860px, calc(100vw - 36px));
   height: min(760px, calc(100vh - 36px));
   max-height: min(88vh, 900px);
   display: grid;
@@ -457,7 +457,7 @@ textarea:focus {
 
 .settings-dialog-body {
   display: grid;
-  grid-template-columns: 210px minmax(0, 1fr);
+  grid-template-columns: 180px minmax(0, 1fr);
   gap: 16px;
   min-height: 0;
   margin-top: 16px;
@@ -532,12 +532,12 @@ textarea:focus {
 
 .settings-content-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
 }
 
 .settings-account-card {
-  grid-column: 1 / -1;
+  grid-column: auto;
 }
 
 .settings-admin-card {
@@ -654,7 +654,7 @@ textarea:focus {
 }
 
 .settings-feedback-card .feedback-hub {
-  grid-template-columns: minmax(280px, 0.85fr) minmax(320px, 1.15fr);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .settings-feedback-card .feedback-list {
