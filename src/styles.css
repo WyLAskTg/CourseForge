@@ -552,7 +552,9 @@ textarea:focus {
 }
 
 .settings-feedback-card {
-  background: white;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .settings-card-head,
