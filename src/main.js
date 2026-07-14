@@ -4,6 +4,7 @@ const STORAGE_KEY = "courseforge-state-v3";
 const LEGACY_STORAGE_KEY = "courseforge-state-v1";
 const UI_LANGUAGE_KEY = "courseforge-ui-language";
 const FEEDBACK_LIKES_KEY = "courseforge-feedback-likes";
+const FEEDBACK_OWNERS_KEY = "courseforge-feedback-owners";
 const TEXT_LIMIT = 120000;
 const SYNC_DEBOUNCE_MS = 900;
 const SEARCH_RESULT_LIMIT = 12;
@@ -86,9 +87,12 @@ let feedbackError = "";
 let feedbackNotice = "";
 let feedbackDraftTitle = "";
 let feedbackDraftBody = "";
+let feedbackDraftNickname = "";
+let feedbackDraftAnonymous = true;
 let feedbackReplyDraft = "";
 let feedbackViewer = { authenticated: false, canReply: false, email: "" };
 let feedbackLikedIds = loadFeedbackLikedIds();
+let feedbackOwnerTokens = loadFeedbackOwnerTokens();
 let searchQuery = "";
 let activeQuestionKey = "";
 let activeStudyCollectionId = "";
@@ -597,6 +601,13 @@ function attachEvents(activeGeneration) {
   document.getElementById("feedbackTitle")?.addEventListener("input", (event) => {
     feedbackDraftTitle = event.target.value;
   });
+  document.getElementById("feedbackNickname")?.addEventListener("input", (event) => {
+    feedbackDraftNickname = event.target.value;
+  });
+  document.getElementById("feedbackAnonymous")?.addEventListener("change", (event) => {
+    feedbackDraftAnonymous = event.target.checked;
+    render();
+  });
   const feedbackBodyInput = document.getElementById("feedbackBody");
   autoResizeTextarea(feedbackBodyInput);
   feedbackBodyInput?.addEventListener("input", (event) => {
@@ -608,6 +619,7 @@ function attachEvents(activeGeneration) {
     feedbackReplyDraft = event.target.value;
   });
   document.getElementById("feedbackLikeBtn")?.addEventListener("click", handleFeedbackLike);
+  document.getElementById("feedbackDeleteBtn")?.addEventListener("click", handleFeedbackDelete);
   document.getElementById("closeFeedbackThreadDialogBtn")?.addEventListener("click", closeFeedbackThreadDialog);
   document.getElementById("feedbackThreadDialogBackdrop")?.addEventListener("click", (event) => {
     if (event.target.id === "feedbackThreadDialogBackdrop") closeFeedbackThreadDialog();
@@ -855,9 +867,16 @@ async function handleFeedbackSubmit(event) {
   event.preventDefault();
   const title = feedbackDraftTitle.trim();
   const body = feedbackDraftBody.trim();
+  const nickname = feedbackDraftNickname.trim();
 
   if (!title || !body) {
     feedbackError = t("请先写标题和内容。", "Please enter both a title and feedback message.");
+    render();
+    return;
+  }
+
+  if (!feedbackDraftAnonymous && !nickname) {
+    feedbackError = t("请输入公开昵称，或选择匿名发布。", "Enter a public nickname or post anonymously.");
     render();
     return;
   }
@@ -868,15 +887,20 @@ async function handleFeedbackSubmit(event) {
   render();
 
   try {
+    const ownerToken = createFeedbackOwnerToken();
     const data = await apiJson("/api/feedback", {
       method: "POST",
-      body: { title, body }
+      body: { title, body, ownerToken, nickname, isAnonymous: feedbackDraftAnonymous }
     });
 
     feedbackItems = Array.isArray(data.items) ? data.items : feedbackItems;
     feedbackViewer = normalizeFeedbackViewer(data.viewer);
     activeFeedbackId = data.thread?.id || activeFeedbackId;
     activeFeedbackThread = data.thread || activeFeedbackThread;
+    if (data.thread?.id) {
+      feedbackOwnerTokens[data.thread.id] = ownerToken;
+      saveFeedbackOwnerTokens();
+    }
     isFeedbackThreadModalOpen = Boolean(data.thread);
     feedbackLoaded = true;
     feedbackDraftTitle = "";
@@ -923,6 +947,38 @@ async function handleFeedbackReplySubmit(event) {
   }
 
   feedbackReplySubmitting = false;
+  render();
+}
+
+async function handleFeedbackDelete() {
+  if (!activeFeedbackId) return;
+  const ownerToken = feedbackOwnerTokens[activeFeedbackId];
+  if (!ownerToken) return;
+  if (!window.confirm(t("确定删除这条反馈帖吗？删除后无法恢复。", "Delete this feedback thread? This cannot be undone."))) return;
+
+  const deletingId = activeFeedbackId;
+  feedbackError = "";
+  feedbackNotice = "";
+
+  try {
+    const data = await apiJson("/api/feedback", {
+      method: "DELETE",
+      body: { threadId: deletingId, ownerToken }
+    });
+    delete feedbackOwnerTokens[deletingId];
+    saveFeedbackOwnerTokens();
+    feedbackLikedIds.delete(deletingId);
+    saveFeedbackLikedIds();
+    feedbackItems = Array.isArray(data.items) ? data.items : feedbackItems.filter((item) => item.id !== deletingId);
+    feedbackViewer = normalizeFeedbackViewer(data.viewer);
+    activeFeedbackId = "";
+    activeFeedbackThread = null;
+    isFeedbackThreadModalOpen = false;
+    feedbackNotice = t("反馈帖已删除。", "Feedback thread deleted.");
+  } catch (error) {
+    feedbackError = error.message;
+  }
+
   render();
 }
 
@@ -2827,8 +2883,20 @@ function feedbackCenterPanel(showHeading = true) {
       <form class="feedback-compose" id="feedbackForm">
         <div class="feedback-compose-head">
           <div>
-            <strong>${t("匿名发帖", "Post anonymously")}</strong>
+            <strong>${t("发布反馈", "Post feedback")}</strong>
           </div>
+        </div>
+        <div class="feedback-author-controls">
+          <label class="feedback-anonymous-toggle">
+            <input id="feedbackAnonymous" type="checkbox" ${feedbackDraftAnonymous ? "checked" : ""} />
+            <span>${t("匿名发布", "Post anonymously")}</span>
+          </label>
+          ${feedbackDraftAnonymous ? "" : `
+            <label class="feedback-nickname-field">
+              <span>${t("公开昵称", "Public nickname")}</span>
+              <input id="feedbackNickname" maxlength="40" placeholder="${t("昵称", "Nickname")}" value="${escapeAttr(feedbackDraftNickname)}" />
+            </label>
+          `}
         </div>
         <input id="feedbackTitle" maxlength="90" placeholder="${t("标题", "Title")}" value="${escapeAttr(feedbackDraftTitle)}" />
         <textarea id="feedbackBody" maxlength="1800" placeholder="${t("写下你的建议、体验问题，或你希望我们下一步做什么。", "Write your suggestion, pain point, or what you want us to build next.")}">${escapeHtml(feedbackDraftBody)}</textarea>
@@ -2866,7 +2934,7 @@ function feedbackListItem(item) {
       </div>
       <p>${escapeHtml(feedbackPreviewText(item.body))}</p>
       <div class="feedback-item-meta">
-        <span>${escapeHtml(t("匿名用户", "Anonymous"))}</span>
+        <span>${escapeHtml(feedbackAuthorLabel(item.authorLabel))}</span>
         <span>${escapeHtml(t(`${item.likeCount || 0} 赞`, `${item.likeCount || 0} likes`))}</span>
         <span>${escapeHtml(t(`${item.replyCount || 0} 条回复`, `${item.replyCount || 0} replies`))}</span>
       </div>
@@ -2914,7 +2982,7 @@ function feedbackThreadView(thread) {
 
       <article class="feedback-message original">
         <div class="feedback-message-head">
-          <strong>${t("匿名用户", "Anonymous")}</strong>
+          <strong>${escapeHtml(feedbackAuthorLabel(thread.authorLabel))}</strong>
           <span>${escapeHtml(formatDate(thread.createdAt))}</span>
         </div>
         <div class="feedback-message-body">${renderFeedbackText(thread.body)}</div>
@@ -2924,6 +2992,11 @@ function feedbackThreadView(thread) {
         <button class="secondary-action feedback-like-button ${liked ? "active" : ""}" id="feedbackLikeBtn" type="button" ${liked ? "disabled" : ""}>
           ${icon("thumbs-up")}<span>${escapeHtml(t(`${thread.likeCount || 0} 赞`, `${thread.likeCount || 0} likes`))}</span>
         </button>
+        ${feedbackOwnerTokens[thread.id] ? `
+          <button class="secondary-action feedback-delete-button" id="feedbackDeleteBtn" type="button">
+            ${icon("trash-2")}<span>${t("删除帖子", "Delete thread")}</span>
+          </button>
+        ` : ""}
       </div>
 
       <div class="feedback-thread-replies">
@@ -2965,7 +3038,10 @@ function feedbackReplyItem(reply) {
 }
 
 function feedbackAuthorLabel(label) {
-  return String(label || "").toLowerCase() === "developer" ? t("开发者", "Developer") : t("匿名用户", "Anonymous");
+  const value = String(label || "").trim();
+  if (value.toLowerCase() === "developer") return t("开发者", "Developer");
+  if (!value || value.toLowerCase() === "anonymous") return t("匿名用户", "Anonymous");
+  return value;
 }
 
 function feedbackPreviewText(value = "") {
@@ -4086,6 +4162,30 @@ function saveFeedbackLikedIds() {
   } catch {
     // Likes are a small local convenience; failing to persist them should not block feedback.
   }
+}
+
+function loadFeedbackOwnerTokens() {
+  try {
+    const value = JSON.parse(localStorage.getItem(FEEDBACK_OWNERS_KEY) || "{}");
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveFeedbackOwnerTokens() {
+  try {
+    localStorage.setItem(FEEDBACK_OWNERS_KEY, JSON.stringify(feedbackOwnerTokens));
+  } catch {
+    // A missing local deletion token must not interrupt feedback browsing.
+  }
+}
+
+function createFeedbackOwnerToken() {
+  if (crypto?.randomUUID) return `${crypto.randomUUID()}-${crypto.randomUUID()}`;
+  const values = new Uint32Array(8);
+  crypto.getRandomValues(values);
+  return Array.from(values, (value) => value.toString(36)).join("-");
 }
 
 function pickCourseColor(index) {

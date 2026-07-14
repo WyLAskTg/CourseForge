@@ -1614,6 +1614,37 @@ h2 {
   gap: 10px;
 }
 
+.feedback-author-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.feedback-anonymous-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.feedback-anonymous-toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.feedback-nickname-field {
+  display: grid;
+  gap: 6px;
+}
+
+.feedback-nickname-field > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .feedback-list-panel {
   align-content: start;
 }
@@ -1702,7 +1733,18 @@ h2 {
 .feedback-thread-actions {
   display: flex;
   align-items: center;
+  gap: 8px;
   justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.feedback-delete-button {
+  color: var(--red);
+}
+
+.feedback-delete-button:hover {
+  border-color: rgba(190, 18, 60, 0.3);
+  background: var(--red-soft);
 }
 
 .feedback-like-button.active {

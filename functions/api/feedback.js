@@ -2,6 +2,7 @@ import { json, requireDb, requireUser } from "../_lib/cloud-state.js";
 
 const TITLE_LIMIT = 90;
 const BODY_LIMIT = 1800;
+const NICKNAME_LIMIT = 40;
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -14,6 +15,10 @@ export async function onRequest(context) {
 
   if (request.method === "POST") {
     return handlePost(request, env, db);
+  }
+
+  if (request.method === "DELETE") {
+    return handleDelete(request, env, db);
   }
 
   return json({ error: "Method not allowed" }, { status: 405 });
@@ -80,7 +85,23 @@ async function handlePost(request, env, db) {
     return json({ error: "Please enter both a title and a feedback message." }, { status: 400 });
   }
 
-  const thread = await createFeedbackThread(db, { title, body: threadBody });
+  const ownerToken = String(body?.ownerToken || "").trim();
+  const isAnonymous = body?.isAnonymous !== false;
+  const nickname = normalizeFeedbackText(body?.nickname, NICKNAME_LIMIT);
+  if (ownerToken.length < 24) {
+    return json({ error: "A valid deletion token is required." }, { status: 400 });
+  }
+  if (!isAnonymous && !nickname) {
+    return json({ error: "Please enter a public nickname or post anonymously." }, { status: 400 });
+  }
+
+  const thread = await createFeedbackThread(db, {
+    title,
+    body: threadBody,
+    ownerToken,
+    authorLabel: isAnonymous ? "Anonymous" : nickname,
+    isAnonymous
+  });
   const viewer = await resolveViewer(request, env);
   return json({
     viewer,
@@ -93,6 +114,38 @@ async function resolveViewer(request, env) {
   const auth = await requireUser(request, env);
   if (auth.user) return buildViewerState(auth.user, env);
   return buildViewerState(null, env);
+}
+
+async function handleDelete(request, env, db) {
+  const body = await request.json().catch(() => ({}));
+  const threadId = String(body?.threadId || "").trim();
+  const ownerToken = String(body?.ownerToken || "").trim();
+  if (!threadId || !ownerToken) {
+    return json({ error: "Feedback thread and deletion token are required." }, { status: 400 });
+  }
+
+  const existing = await db.prepare(
+    "SELECT id, owner_token_hash FROM feedback_threads WHERE id = ?"
+  ).bind(threadId).first();
+  if (!existing) {
+    return json({ error: "Feedback thread not found." }, { status: 404 });
+  }
+
+  const suppliedHash = await hashOwnerToken(ownerToken);
+  if (!existing.owner_token_hash || !safeEqual(existing.owner_token_hash, suppliedHash)) {
+    return json({ error: "You do not have permission to delete this feedback thread." }, { status: 403 });
+  }
+
+  await db.batch([
+    db.prepare("DELETE FROM feedback_replies WHERE thread_id = ?").bind(threadId),
+    db.prepare("DELETE FROM feedback_threads WHERE id = ?").bind(threadId)
+  ]);
+
+  return json({
+    deleted: true,
+    viewer: await resolveViewer(request, env),
+    items: await listFeedbackThreads(db)
+  });
 }
 
 function buildViewerState(user, env) {
@@ -136,16 +189,31 @@ function normalizeFeedbackText(value, limit) {
   return text.slice(0, limit);
 }
 
-async function createFeedbackThread(db, { title, body }) {
+async function createFeedbackThread(db, { title, body, ownerToken, authorLabel, isAnonymous }) {
   const now = new Date().toISOString();
   const id = newFeedbackId("feedback");
+  const ownerTokenHash = await hashOwnerToken(ownerToken);
 
   await db.prepare(
-    `INSERT INTO feedback_threads (id, title, body, like_count, created_at, updated_at)
-     VALUES (?, ?, ?, 0, ?, ?)`
-  ).bind(id, title, body, now, now).run();
+    `INSERT INTO feedback_threads (id, title, body, author_label, is_anonymous, owner_token_hash, like_count, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`
+  ).bind(id, title, body, authorLabel, isAnonymous ? 1 : 0, ownerTokenHash, now, now).run();
 
   return readFeedbackThread(db, id);
+}
+
+async function hashOwnerToken(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(value || "")));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function safeEqual(left, right) {
+  if (left.length !== right.length) return false;
+  let mismatch = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    mismatch |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  }
+  return mismatch === 0;
 }
 
 async function createFeedbackReply(db, threadId, viewer, body) {
@@ -181,6 +249,8 @@ async function listFeedbackThreads(db) {
        feedback_threads.id,
        feedback_threads.title,
        feedback_threads.body,
+       feedback_threads.author_label,
+       feedback_threads.is_anonymous,
        COALESCE(feedback_threads.like_count, 0) AS like_count,
        feedback_threads.created_at,
        feedback_threads.updated_at,
@@ -200,6 +270,8 @@ async function readFeedbackThread(db, threadId) {
        feedback_threads.id,
        feedback_threads.title,
        feedback_threads.body,
+       feedback_threads.author_label,
+       feedback_threads.is_anonymous,
        COALESCE(feedback_threads.like_count, 0) AS like_count,
        feedback_threads.created_at,
        feedback_threads.updated_at,
@@ -236,6 +308,8 @@ function feedbackThreadRowToItem(row) {
     id: row.id,
     title: row.title || "",
     body: row.body || "",
+    authorLabel: Number(row.is_anonymous) === 0 ? (row.author_label || "Anonymous") : "Anonymous",
+    isAnonymous: Number(row.is_anonymous) !== 0,
     likeCount: Number(row.like_count || 0),
     replyCount: Number(row.reply_count || 0),
     createdAt: row.created_at,
