@@ -2417,7 +2417,7 @@ function settingsDialog() {
   const wrongSets = state.studyCollections.filter((collection) => collection.type === "wrong");
   const tabs = [
     { id: "account", label: t("账号与数据", "Account & Data"), iconName: "database" },
-    { id: "collections", label: t("收藏与错题", "Collections"), iconName: "star" },
+    { id: "collections", label: t("收藏夹与错题集", "Collections"), iconName: "star" },
     { id: "feedback", label: t("意见反馈", "Feedback"), iconName: "messages-square" },
   ];
   const activeTab = tabs.some((tab) => tab.id === settingsTab) ? settingsTab : "account";
@@ -2459,7 +2459,6 @@ function settingsAccountDataSection(documents, generations) {
   return `
     <div class="settings-section-heading">
       <h3>${t("账号与数据", "Account & Data")}</h3>
-      <p>${t("管理账号，并查看已保存的资料与生成记录。", "Manage your account and review saved materials and generations.")}</p>
     </div>
     <div class="settings-content-grid settings-account-grid">
       <section class="settings-admin-card settings-account-card">
@@ -2491,8 +2490,7 @@ function settingsAccountDataSection(documents, generations) {
 function settingsCollectionsSection(favorites, wrongSets, allQuestionReferences) {
   return `
     <div class="settings-section-heading">
-      <h3>${t("收藏与错题", "Collections")}</h3>
-      <p>${t("集中查看收藏夹和错题集中的内容。", "Review your favorites and wrong-question sets in one place.")}</p>
+      <h3>${t("收藏夹与错题集", "Collections")}</h3>
     </div>
     <div class="settings-content-grid">
       <section class="settings-admin-card">
@@ -2521,7 +2519,6 @@ function settingsFeedbackSection() {
   return `
     <div class="settings-section-heading">
       <h3>${t("意见反馈", "Feedback")}</h3>
-      <p>${t("匿名提交建议，或查看并参与已有讨论。", "Post suggestions anonymously or join existing discussions.")}</p>
     </div>
     <section class="settings-admin-card settings-feedback-card">
       ${feedbackCenterPanel(false)}
@@ -2547,9 +2544,10 @@ function settingsAccountPanel() {
 
   return `
     <div class="settings-account-stack">
-      <p class="settings-account-email">${escapeHtml(currentUser.email)}</p>
-      ${statusText ? `<span class="auth-status ${escapeAttr(cloudSyncStatus.level)}">${escapeHtml(statusText)}</span>` : ""}
-      <p>${escapeHtml(detail)}</p>
+      <div class="settings-account-identity">
+        <p class="settings-account-email">${escapeHtml(currentUser.email)}</p>
+        ${statusText ? `<span class="auth-status ${escapeAttr(cloudSyncStatus.level)}">${escapeHtml(statusText)}</span>` : ""}
+      </div>
       <div class="settings-inline-actions">
         <button class="secondary-action" id="settingsSyncNowBtn" type="button">${t("立即同步", "Sync now")}</button>
         <button class="secondary-action" id="settingsLogoutBtn" type="button">${t("登出", "Log out")}</button>

@@ -591,6 +591,14 @@ textarea:focus {
   margin: 0;
 }
 
+.settings-account-identity {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
 .settings-account-email {
   color: var(--text) !important;
   font-size: 14px !important;
