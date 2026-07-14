@@ -104,6 +104,7 @@ let isAuthDialogOpen = false;
 let isSettingsDialogOpen = false;
 let settingsTab = "account";
 let isFeedbackThreadModalOpen = false;
+let isFeedbackReplyDialogOpen = false;
 let topToast = null;
 let topToastTimer = null;
 
@@ -143,6 +144,7 @@ function render() {
       ${authDialog()}
       ${settingsDialog()}
       ${feedbackThreadModal()}
+      ${feedbackReplyDialog()}
       ${topToastMarkup()}
 
       <main class="workspace">
@@ -618,6 +620,12 @@ function attachEvents(activeGeneration) {
     feedbackReplyNickname = event.target.value;
   });
   document.getElementById("feedbackLikeBtn")?.addEventListener("click", handleFeedbackLike);
+  document.getElementById("openFeedbackReplyDialogBtn")?.addEventListener("click", openFeedbackReplyDialog);
+  document.getElementById("closeFeedbackReplyDialogBtn")?.addEventListener("click", closeFeedbackReplyDialog);
+  document.getElementById("cancelFeedbackReplyDialogBtn")?.addEventListener("click", closeFeedbackReplyDialog);
+  document.getElementById("feedbackReplyDialogBackdrop")?.addEventListener("click", (event) => {
+    if (event.target.id === "feedbackReplyDialogBackdrop") closeFeedbackReplyDialog();
+  });
   document.getElementById("feedbackDeleteBtn")?.addEventListener("click", handleFeedbackDelete);
   document.getElementById("closeFeedbackThreadDialogBtn")?.addEventListener("click", closeFeedbackThreadDialog);
   document.getElementById("feedbackThreadDialogBackdrop")?.addEventListener("click", (event) => {
@@ -858,6 +866,19 @@ function openFeedbackThread(feedbackId) {
 
 function closeFeedbackThreadDialog() {
   isFeedbackThreadModalOpen = false;
+  isFeedbackReplyDialogOpen = false;
+  feedbackReplyDraft = "";
+  render();
+}
+
+function openFeedbackReplyDialog() {
+  if (!activeFeedbackThread) return;
+  isFeedbackReplyDialogOpen = true;
+  render();
+}
+
+function closeFeedbackReplyDialog() {
+  isFeedbackReplyDialogOpen = false;
   feedbackReplyDraft = "";
   render();
 }
@@ -941,6 +962,7 @@ async function handleFeedbackReplySubmit(event) {
     feedbackViewer = normalizeFeedbackViewer(data.viewer);
     activeFeedbackThread = data.thread || activeFeedbackThread;
     feedbackReplyDraft = "";
+    isFeedbackReplyDialogOpen = false;
     feedbackNotice = t("回复已发布。", "Reply posted.");
   } catch (error) {
     feedbackError = error.message;
@@ -974,6 +996,7 @@ async function handleFeedbackDelete() {
     activeFeedbackId = "";
     activeFeedbackThread = null;
     isFeedbackThreadModalOpen = false;
+    isFeedbackReplyDialogOpen = false;
     feedbackNotice = t("反馈帖已删除。", "Feedback thread deleted.");
   } catch (error) {
     feedbackError = error.message;
@@ -2980,17 +3003,22 @@ function feedbackThreadView(thread) {
           <span>${escapeHtml(formatDate(thread.createdAt))}</span>
         </div>
         <div class="feedback-message-body">${renderFeedbackText(thread.body)}</div>
+        ${feedbackOwnerTokens[thread.id] ? `
+          <div class="feedback-original-footer">
+            <button class="feedback-delete-button" id="feedbackDeleteBtn" type="button" aria-label="${t("删除帖子", "Delete thread")}" title="${t("删除帖子", "Delete thread")}">
+              ${icon("trash-2")}
+            </button>
+          </div>
+        ` : ""}
       </article>
 
       <div class="feedback-thread-actions">
         <button class="secondary-action feedback-like-button ${liked ? "active" : ""}" id="feedbackLikeBtn" type="button" ${liked ? "disabled" : ""}>
-          ${icon("thumbs-up")}<span>${escapeHtml(t(`${thread.likeCount || 0} 赞`, `${thread.likeCount || 0} likes`))}</span>
+          ${icon("thumbs-up")}<span>${Number(thread.likeCount || 0)}</span>
         </button>
-        ${feedbackOwnerTokens[thread.id] ? `
-          <button class="secondary-action feedback-delete-button" id="feedbackDeleteBtn" type="button">
-            ${icon("trash-2")}<span>${t("删除帖子", "Delete thread")}</span>
-          </button>
-        ` : ""}
+        <button class="secondary-action" id="openFeedbackReplyDialogBtn" type="button">
+          ${icon("message-square")}<span>${t("回复", "Reply")}</span>
+        </button>
       </div>
 
       <div class="feedback-thread-replies">
@@ -3003,22 +3031,38 @@ function feedbackThreadView(thread) {
           : `<p class="feedback-inline-status">${escapeHtml(t("还没有回复。", "No replies yet."))}</p>`}
       </div>
 
-      <form class="feedback-reply-form" id="feedbackReplyForm">
-        <label>
-          <span>${t("昵称", "Nickname")}</span>
-          <input id="feedbackReplyNickname" maxlength="40" value="${escapeAttr(feedbackReplyNickname)}" />
-        </label>
-        <label>
-          <span>${t("回复", "Reply")}</span>
-          <textarea id="feedbackReplyBody" maxlength="1800" placeholder="${t("写下你的回复。", "Write your reply.")}">${escapeHtml(feedbackReplyDraft)}</textarea>
-        </label>
-        <div class="feedback-compose-actions">
-          <button class="primary-action" type="submit" ${feedbackReplySubmitting ? "disabled" : ""}>
-            ${icon(feedbackReplySubmitting ? "loader-2" : "corner-down-left", feedbackReplySubmitting ? "spin" : "")}
-            <span>${feedbackReplySubmitting ? t("回复中", "Replying") : t("发布回复", "Post reply")}</span>
-          </button>
+    </div>
+  `;
+}
+
+function feedbackReplyDialog() {
+  if (!isFeedbackReplyDialogOpen || !activeFeedbackThread) return "";
+
+  return `
+    <div class="modal-backdrop feedback-reply-backdrop" id="feedbackReplyDialogBackdrop" role="presentation">
+      <section class="modal-card feedback-reply-dialog" role="dialog" aria-modal="true" aria-labelledby="feedbackReplyDialogTitle">
+        <div class="modal-heading">
+          <div><h2 id="feedbackReplyDialogTitle">${t("回复帖子", "Reply to thread")}</h2></div>
+          <button class="icon-button quiet" id="closeFeedbackReplyDialogBtn" type="button" aria-label="${t("关闭", "Close")}">${icon("x")}</button>
         </div>
-      </form>
+        <form class="feedback-reply-form" id="feedbackReplyForm">
+          <label>
+            <span>${t("昵称", "Nickname")}</span>
+            <input id="feedbackReplyNickname" maxlength="40" value="${escapeAttr(feedbackReplyNickname)}" />
+          </label>
+          <label>
+            <span>${t("回复", "Reply")}</span>
+            <textarea id="feedbackReplyBody" maxlength="1800" placeholder="${t("写下你的回复。", "Write your reply.")}">${escapeHtml(feedbackReplyDraft)}</textarea>
+          </label>
+          <div class="modal-actions">
+            <button class="secondary-action" id="cancelFeedbackReplyDialogBtn" type="button">${t("取消", "Cancel")}</button>
+            <button class="primary-action" type="submit" ${feedbackReplySubmitting ? "disabled" : ""}>
+              ${icon(feedbackReplySubmitting ? "loader-2" : "corner-down-left", feedbackReplySubmitting ? "spin" : "")}
+              <span>${feedbackReplySubmitting ? t("回复中", "Replying") : t("发布回复", "Post reply")}</span>
+            </button>
+          </div>
+        </form>
+      </section>
     </div>
   `;
 }

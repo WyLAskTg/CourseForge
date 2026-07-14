@@ -447,6 +447,10 @@ textarea:focus {
   z-index: 60;
 }
 
+.feedback-reply-backdrop {
+  z-index: 70;
+}
+
 .settings-dialog {
   width: min(860px, calc(100vw - 36px));
   height: min(680px, calc(100vh - 36px));
@@ -1727,13 +1731,42 @@ h2 {
   flex-wrap: wrap;
 }
 
+.feedback-original-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
 .feedback-delete-button {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
   color: var(--red);
+  background: white;
 }
 
 .feedback-delete-button:hover {
   border-color: rgba(190, 18, 60, 0.3);
   background: var(--red-soft);
+}
+
+.feedback-delete-button svg {
+  width: 17px;
+  height: 17px;
+}
+
+.feedback-reply-dialog {
+  width: min(520px, 100%);
+}
+
+.feedback-reply-dialog .feedback-reply-form {
+  margin-top: 16px;
+  padding-top: 0;
 }
 
 .feedback-like-button.active {
