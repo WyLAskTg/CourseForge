@@ -1006,18 +1006,24 @@ async function handleFeedbackDelete() {
 }
 
 async function handleFeedbackLike() {
-  if (!activeFeedbackId || feedbackLikedIds.has(activeFeedbackId)) return;
+  if (!activeFeedbackId) return;
 
   const likedId = activeFeedbackId;
-  feedbackLikedIds.add(likedId);
+  const wasLiked = feedbackLikedIds.has(likedId);
+  if (wasLiked) {
+    feedbackLikedIds.delete(likedId);
+    decrementFeedbackLikeCount(likedId);
+  } else {
+    feedbackLikedIds.add(likedId);
+    incrementFeedbackLikeCount(likedId);
+  }
   saveFeedbackLikedIds();
-  incrementFeedbackLikeCount(likedId);
   render();
 
   try {
     const data = await apiJson("/api/feedback", {
       method: "POST",
-      body: { threadId: likedId, action: "like" }
+      body: { threadId: likedId, action: wasLiked ? "unlike" : "like" }
     });
 
     feedbackItems = Array.isArray(data.items) ? data.items : feedbackItems;
@@ -1025,9 +1031,14 @@ async function handleFeedbackLike() {
     activeFeedbackThread = data.thread || activeFeedbackThread;
     feedbackError = "";
   } catch (error) {
-    feedbackLikedIds.delete(likedId);
+    if (wasLiked) {
+      feedbackLikedIds.add(likedId);
+      incrementFeedbackLikeCount(likedId);
+    } else {
+      feedbackLikedIds.delete(likedId);
+      decrementFeedbackLikeCount(likedId);
+    }
     saveFeedbackLikedIds();
-    decrementFeedbackLikeCount(likedId);
     feedbackError = error.message;
   }
 
@@ -2996,14 +3007,15 @@ function feedbackThreadView(thread) {
         <div class="feedback-original-title">
           <h3>${escapeHtml(thread.title)}</h3>
         </div>
-        <div class="feedback-message-head">
-          <strong>${escapeHtml(feedbackAuthorLabel(thread.authorLabel))}</strong>
-          <span>${escapeHtml(formatDate(thread.createdAt))}</span>
+        <div class="feedback-original-meta">
+          <span>${escapeHtml(feedbackAuthorLabel(thread.authorLabel))}</span>
+          <span aria-hidden="true">·</span>
+          <time>${escapeHtml(formatCalendarDate(thread.createdAt))}</time>
         </div>
         <div class="feedback-message-body">${renderFeedbackText(thread.body)}</div>
         <div class="feedback-original-footer">
           <div class="feedback-card-actions">
-            <button class="feedback-icon-action feedback-like-button ${liked ? "active" : ""}" id="feedbackLikeBtn" type="button" ${liked ? "disabled" : ""} aria-label="${t("点赞", "Like")}" title="${t("点赞", "Like")}">
+            <button class="feedback-icon-action feedback-like-button ${liked ? "active" : ""}" id="feedbackLikeBtn" type="button" aria-label="${liked ? t("取消点赞", "Unlike") : t("点赞", "Like")}" title="${liked ? t("取消点赞", "Unlike") : t("点赞", "Like")}">
               ${icon("thumbs-up")}<span>${Number(thread.likeCount || 0)}</span>
             </button>
             <button class="feedback-icon-action" id="openFeedbackReplyDialogBtn" type="button" aria-label="${t("回复", "Reply")}" title="${t("回复", "Reply")}">
@@ -4258,6 +4270,15 @@ function formatBytes(size) {
 
 function formatDate(value) {
   return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
+
+function formatCalendarDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function clamp(value, min, max) {

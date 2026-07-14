@@ -49,8 +49,9 @@ async function handlePost(request, env, db) {
   if (threadId) {
     const viewer = await resolveViewer(request, env);
 
-    if (String(body?.action || "").trim().toLowerCase() === "like") {
-      const thread = await likeFeedbackThread(db, threadId);
+    const action = String(body?.action || "").trim().toLowerCase();
+    if (action === "like" || action === "unlike") {
+      const thread = await changeFeedbackLike(db, threadId, action === "like" ? 1 : -1);
       if (!thread) {
         return json({ error: "Feedback thread not found." }, { status: 404 });
       }
@@ -235,10 +236,14 @@ async function createFeedbackReply(db, threadId, viewer, body, nickname) {
   return readFeedbackThread(db, threadId);
 }
 
-async function likeFeedbackThread(db, threadId) {
+async function changeFeedbackLike(db, threadId, delta) {
   const existing = await db.prepare("SELECT id FROM feedback_threads WHERE id = ?").bind(threadId).first();
   if (!existing) return null;
-  await db.prepare("UPDATE feedback_threads SET like_count = COALESCE(like_count, 0) + 1 WHERE id = ?").bind(threadId).run();
+  await db.prepare(
+    `UPDATE feedback_threads
+     SET like_count = MAX(0, COALESCE(like_count, 0) + ?)
+     WHERE id = ?`
+  ).bind(delta, threadId).run();
   return readFeedbackThread(db, threadId);
 }
 
