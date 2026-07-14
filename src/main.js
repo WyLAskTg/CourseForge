@@ -3029,7 +3029,7 @@ function feedbackReplyItem(reply) {
       <div class="feedback-message-head">
         <div class="feedback-reply-author">
           <strong>${escapeHtml(feedbackAuthorLabel(reply.authorLabel))}</strong>
-          ${reply.isDeveloper ? `<span class="developer-reply-badge">${t("开发者回复", "Developer reply")}</span>` : ""}
+          ${reply.isDeveloper ? `<span class="developer-reply-badge">${t("开发者", "Developer")}</span>` : ""}
         </div>
         <span>${escapeHtml(formatDate(reply.createdAt))}</span>
       </div>
