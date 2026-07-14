@@ -449,7 +449,7 @@ textarea:focus {
 
 .settings-dialog {
   width: min(860px, calc(100vw - 36px));
-  height: min(760px, calc(100vh - 36px));
+  height: min(680px, calc(100vh - 36px));
   max-height: min(88vh, 900px);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);

@@ -1204,8 +1204,8 @@ function buildWorkspaceSearchResults(query, courseDocuments, courseGenerations) 
       id: `document:${document.id}`,
       kind: "document",
       title: document.name,
-      preview: plainTextPreview(document.text || displayBilingual(document.type)),
-      meta: `${displayBilingual(document.type)} · ${formatBytes(document.size)}`,
+      preview: plainTextPreview(document.text || ""),
+      meta: formatBytes(document.size),
       documentId: document.id
     });
     if (results.length >= SEARCH_RESULT_LIMIT) return results;
@@ -2467,7 +2467,7 @@ function settingsAccountDataSection(documents, generations) {
       </section>
       <section class="settings-admin-card">
         <div class="settings-card-head">
-          <h3>${t("上传资料", "Uploaded Materials")}</h3>
+          <h3>${t("课程资料", "Course Materials")}</h3>
           <span>${escapeHtml(t(`${documents.length} 份`, `${documents.length} file(s)`))}</span>
         </div>
         <div class="settings-summary-list">
@@ -2562,7 +2562,7 @@ function settingsMaterialRow(document) {
       <div class="file-icon">${icon("file-text")}</div>
       <div>
         <strong>${escapeHtml(document.name)}</strong>
-        <span>${escapeHtml(courseName(document.courseId))} · ${escapeHtml(displayBilingual(document.type))} · ${formatBytes(document.size)}</span>
+        <span>${escapeHtml(courseName(document.courseId))} · ${formatBytes(document.size)}</span>
       </div>
       <time>${escapeHtml(formatDate(document.createdAt))}</time>
     </article>
@@ -2722,7 +2722,7 @@ function documentRow(document) {
       <div class="file-icon">${icon("file-text")}</div>
       <div>
         <strong>${escapeHtml(document.name)}</strong>
-        <span>${escapeHtml(displayBilingual(document.type))} · ${formatBytes(document.size)}</span>
+        <span>${formatBytes(document.size)}</span>
         ${usesOcr ? `<small class="document-note">${escapeHtml(t("扫描件已走 OCR", "Scanned PDF parsed with OCR"))}</small>` : ""}
       </div>
       ${blockedBadge(document.safety)}
