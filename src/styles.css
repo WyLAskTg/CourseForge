@@ -1644,6 +1644,10 @@ h2 {
   justify-content: flex-end;
 }
 
+.feedback-compose-actions .primary-action span {
+  color: #ffffff;
+}
+
 .feedback-compose-head strong,
 .feedback-list-head strong,
 .feedback-thread-subhead strong {
