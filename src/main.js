@@ -98,6 +98,7 @@ let studyCollectionDialogType = "";
 let renameGenerationId = "";
 let isAuthDialogOpen = false;
 let isSettingsDialogOpen = false;
+let settingsTab = "account";
 let isFeedbackThreadModalOpen = false;
 let topToast = null;
 let topToastTimer = null;
@@ -387,6 +388,15 @@ function attachEvents(activeGeneration) {
   });
   document.getElementById("settingsSyncNowBtn")?.addEventListener("click", () => pushCloudState({ renderAfter: true }));
   document.getElementById("settingsLogoutBtn")?.addEventListener("click", handleLogout);
+  document.querySelectorAll("[data-settings-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      settingsTab = button.dataset.settingsTab || "account";
+      render();
+      if (settingsTab === "feedback" && !feedbackLoaded) {
+        refreshFeedbackBoard({ keepSelection: true, loadThread: false });
+      }
+    });
+  });
   document.getElementById("courseDialogForm")?.addEventListener("submit", handleCreateCourse);
   document.getElementById("closeCourseDialogBtn")?.addEventListener("click", closeCourseDialog);
   document.getElementById("cancelCourseDialogBtn")?.addEventListener("click", closeCourseDialog);
@@ -2405,6 +2415,12 @@ function settingsDialog() {
   const generations = [...state.generations].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   const favorites = state.studyCollections.filter((collection) => collection.type === "favorite");
   const wrongSets = state.studyCollections.filter((collection) => collection.type === "wrong");
+  const tabs = [
+    { id: "account", label: t("账号与数据", "Account & Data"), iconName: "database" },
+    { id: "collections", label: t("收藏与错题", "Collections"), iconName: "star" },
+    { id: "feedback", label: t("意见反馈", "Feedback"), iconName: "messages-square" },
+  ];
+  const activeTab = tabs.some((tab) => tab.id === settingsTab) ? settingsTab : "account";
 
   return `
     <div class="modal-backdrop settings-backdrop" id="settingsDialogBackdrop" role="presentation">
@@ -2418,67 +2434,98 @@ function settingsDialog() {
           </button>
         </div>
         <div class="settings-dialog-body">
-          <section class="settings-admin-card">
-            <div class="settings-card-head">
-              <h3>${t("账号信息", "Account")}</h3>
-            </div>
-            ${settingsAccountPanel()}
-          </section>
-
-          <section class="settings-admin-card">
-            <div class="settings-card-head">
-              <h3>${t("上传资料", "Uploaded Materials")}</h3>
-              <span>${escapeHtml(t(`${documents.length} 份`, `${documents.length} file(s)`))}</span>
-            </div>
-            <div class="settings-summary-list">
-              ${documents.length
-                ? documents.map(settingsMaterialRow).join("")
-                : settingsEmptyLine(t("还没有上传资料", "No uploaded materials yet"))}
-            </div>
-          </section>
-
-          <section class="settings-admin-card">
-            <div class="settings-card-head">
-              <h3>${t("生成历史", "Generation History")}</h3>
-              <span>${escapeHtml(t(`${generations.length} 条`, `${generations.length} item(s)`))}</span>
-            </div>
-            <div class="settings-summary-list">
-              ${generations.length
-                ? generations.map(settingsGenerationRow).join("")
-                : settingsEmptyLine(t("还没有生成历史", "No generation history yet"))}
-            </div>
-          </section>
-
-          <section class="settings-admin-card">
-            <div class="settings-card-head">
-              <h3>${t("收藏夹", "Favorites")}</h3>
-              <span>${escapeHtml(t(`${favorites.length} 个`, `${favorites.length} folder(s)`))}</span>
-            </div>
-            <div class="settings-summary-list">
-              ${favorites.length
-                ? favorites.map((collection) => settingsCollectionRow(collection, allQuestionReferences)).join("")
-                : settingsEmptyLine(t("还没有收藏夹", "No favorite folders yet"))}
-            </div>
-          </section>
-
-          <section class="settings-admin-card">
-            <div class="settings-card-head">
-              <h3>${t("错题集", "Wrong Question Sets")}</h3>
-              <span>${escapeHtml(t(`${wrongSets.length} 个`, `${wrongSets.length} set(s)`))}</span>
-            </div>
-            <div class="settings-summary-list">
-              ${wrongSets.length
-                ? wrongSets.map((collection) => settingsCollectionRow(collection, allQuestionReferences)).join("")
-                : settingsEmptyLine(t("还没有错题集", "No wrong-question sets yet"))}
-            </div>
-          </section>
-
-          <section class="settings-admin-card settings-feedback-card">
-            ${feedbackCenterPanel()}
-          </section>
+          <nav class="settings-nav" aria-label="${t("设置分类", "Settings sections")}">
+            ${tabs.map((tab) => `
+              <button class="settings-nav-item ${activeTab === tab.id ? "active" : ""}" type="button" data-settings-tab="${tab.id}">
+                ${icon(tab.iconName)}
+                <span>${tab.label}</span>
+              </button>
+            `).join("")}
+          </nav>
+          <div class="settings-content">
+            ${activeTab === "collections"
+              ? settingsCollectionsSection(favorites, wrongSets, allQuestionReferences)
+              : activeTab === "feedback"
+                ? settingsFeedbackSection()
+                : settingsAccountDataSection(documents, generations)}
+          </div>
         </div>
       </section>
     </div>
+  `;
+}
+
+function settingsAccountDataSection(documents, generations) {
+  return `
+    <div class="settings-section-heading">
+      <h3>${t("账号与数据", "Account & Data")}</h3>
+      <p>${t("管理账号，并查看已保存的资料与生成记录。", "Manage your account and review saved materials and generations.")}</p>
+    </div>
+    <div class="settings-content-grid settings-account-grid">
+      <section class="settings-admin-card settings-account-card">
+        <div class="settings-card-head"><h3>${t("账号信息", "Account")}</h3></div>
+        ${settingsAccountPanel()}
+      </section>
+      <section class="settings-admin-card">
+        <div class="settings-card-head">
+          <h3>${t("上传资料", "Uploaded Materials")}</h3>
+          <span>${escapeHtml(t(`${documents.length} 份`, `${documents.length} file(s)`))}</span>
+        </div>
+        <div class="settings-summary-list">
+          ${documents.length ? documents.map(settingsMaterialRow).join("") : settingsEmptyLine(t("还没有上传资料", "No uploaded materials yet"))}
+        </div>
+      </section>
+      <section class="settings-admin-card">
+        <div class="settings-card-head">
+          <h3>${t("生成历史", "Generation History")}</h3>
+          <span>${escapeHtml(t(`${generations.length} 条`, `${generations.length} item(s)`))}</span>
+        </div>
+        <div class="settings-summary-list">
+          ${generations.length ? generations.map(settingsGenerationRow).join("") : settingsEmptyLine(t("还没有生成历史", "No generation history yet"))}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function settingsCollectionsSection(favorites, wrongSets, allQuestionReferences) {
+  return `
+    <div class="settings-section-heading">
+      <h3>${t("收藏与错题", "Collections")}</h3>
+      <p>${t("集中查看收藏夹和错题集中的内容。", "Review your favorites and wrong-question sets in one place.")}</p>
+    </div>
+    <div class="settings-content-grid">
+      <section class="settings-admin-card">
+        <div class="settings-card-head">
+          <h3>${t("收藏夹", "Favorites")}</h3>
+          <span>${escapeHtml(t(`${favorites.length} 个`, `${favorites.length} folder(s)`))}</span>
+        </div>
+        <div class="settings-summary-list">
+          ${favorites.length ? favorites.map((collection) => settingsCollectionRow(collection, allQuestionReferences)).join("") : settingsEmptyLine(t("还没有收藏夹", "No favorite folders yet"))}
+        </div>
+      </section>
+      <section class="settings-admin-card">
+        <div class="settings-card-head">
+          <h3>${t("错题集", "Wrong Question Sets")}</h3>
+          <span>${escapeHtml(t(`${wrongSets.length} 个`, `${wrongSets.length} set(s)`))}</span>
+        </div>
+        <div class="settings-summary-list">
+          ${wrongSets.length ? wrongSets.map((collection) => settingsCollectionRow(collection, allQuestionReferences)).join("") : settingsEmptyLine(t("还没有错题集", "No wrong-question sets yet"))}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function settingsFeedbackSection() {
+  return `
+    <div class="settings-section-heading">
+      <h3>${t("意见反馈", "Feedback")}</h3>
+      <p>${t("匿名提交建议，或查看并参与已有讨论。", "Post suggestions anonymously or join existing discussions.")}</p>
+    </div>
+    <section class="settings-admin-card settings-feedback-card">
+      ${feedbackCenterPanel(false)}
+    </section>
   `;
 }
 
@@ -2769,13 +2816,13 @@ function historyItem(generation, activeId) {
   `;
 }
 
-function feedbackCenterPanel() {
+function feedbackCenterPanel(showHeading = true) {
   return `
-    <div class="panel-heading output-heading feedback-heading">
+    ${showHeading ? `<div class="panel-heading output-heading feedback-heading">
       <div>
         <h2>${t("意见反馈", "Feedback")}</h2>
       </div>
-    </div>
+    </div>` : ""}
     ${feedbackError ? `<p class="feedback-banner error">${escapeHtml(feedbackError)}</p>` : ""}
     ${feedbackNotice ? `<p class="feedback-banner success">${escapeHtml(feedbackNotice)}</p>` : ""}
     <div class="feedback-hub">

@@ -456,12 +456,87 @@ textarea:focus {
 
 .settings-dialog-body {
   display: grid;
-  grid-template-columns: minmax(280px, 0.85fr) minmax(420px, 1.15fr);
+  grid-template-columns: 210px minmax(0, 1fr);
   gap: 16px;
   min-height: 0;
   margin-top: 16px;
+  overflow: hidden;
+}
+
+.settings-nav {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text);
+  background: transparent;
+  font-size: 14px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.settings-nav-item:hover {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.settings-nav-item.active {
+  color: var(--teal-dark);
+  border-color: var(--line);
+  background: white;
+  box-shadow: 0 5px 16px rgba(15, 23, 42, 0.06);
+}
+
+.settings-nav-item svg {
+  width: 18px;
+  height: 18px;
+}
+
+.settings-content {
+  min-width: 0;
+  min-height: 0;
   overflow: auto;
   padding-right: 2px;
+}
+
+.settings-section-heading {
+  margin-bottom: 12px;
+}
+
+.settings-section-heading h3 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.settings-section-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.settings-content-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.settings-account-card {
+  grid-column: 1 / -1;
 }
 
 .settings-admin-card {
@@ -476,7 +551,6 @@ textarea:focus {
 }
 
 .settings-feedback-card {
-  grid-column: 1 / -1;
   background: white;
 }
 
@@ -571,7 +645,7 @@ textarea:focus {
 }
 
 .settings-feedback-card .feedback-hub {
-  grid-template-columns: minmax(280px, 0.9fr) minmax(320px, 1.1fr);
+  grid-template-columns: minmax(280px, 0.85fr) minmax(320px, 1.15fr);
 }
 
 .settings-feedback-card .feedback-list {
@@ -2075,12 +2149,32 @@ h2 {
     grid-template-columns: 1fr;
   }
 
-  .settings-dialog-body,
+  .settings-dialog-body {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .settings-nav {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .settings-nav-item {
+    width: auto;
+    min-width: max-content;
+  }
+
+  .settings-content {
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .settings-content-grid,
   .settings-feedback-card .feedback-hub {
     grid-template-columns: 1fr;
   }
 
-  .settings-feedback-card {
+  .settings-account-card {
     grid-column: auto;
   }
 
