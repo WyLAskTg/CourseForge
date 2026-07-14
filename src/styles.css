@@ -1741,31 +1741,56 @@ h2 {
 
 .feedback-original-footer {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-top: 10px;
 }
 
-.feedback-delete-button {
-  display: inline-grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  min-height: 36px;
-  padding: 0;
-  border: 1px solid var(--line);
+.feedback-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.feedback-icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0 7px;
+  border: 0;
   border-radius: 8px;
+  color: var(--muted);
+  background: transparent;
+}
+
+.feedback-icon-action:hover {
+  color: var(--text);
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.feedback-icon-action svg {
+  width: 18px;
+  height: 18px;
+}
+
+.feedback-icon-action span {
+  color: currentColor;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.feedback-delete-button {
   color: var(--red);
-  background: white;
 }
 
 .feedback-delete-button:hover {
   border-color: rgba(190, 18, 60, 0.3);
   background: var(--red-soft);
-}
-
-.feedback-delete-button svg {
-  width: 17px;
-  height: 17px;
 }
 
 .feedback-reply-dialog {
@@ -1778,10 +1803,15 @@ h2 {
 }
 
 .feedback-like-button.active {
-  color: var(--teal);
-  border-color: rgba(15, 118, 110, 0.28);
-  background: var(--teal-soft);
+  color: #b45309;
+  background: #fff3df;
+  cursor: default;
   opacity: 1;
+}
+
+.feedback-like-button.active svg {
+  fill: #f5b86b;
+  stroke: #b45309;
 }
 
 .feedback-message {
@@ -1794,6 +1824,12 @@ h2 {
 .feedback-message.original {
   border: 1px solid rgba(37, 99, 235, 0.12);
   background: #f8fbff;
+}
+
+.feedback-original-title h3 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.3;
 }
 
 .feedback-message.reply {

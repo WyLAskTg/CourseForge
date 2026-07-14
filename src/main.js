@@ -2992,36 +2992,31 @@ function feedbackThreadView(thread) {
   const liked = feedbackLikedIds.has(thread.id);
   return `
     <div class="feedback-thread-card">
-      <div class="feedback-thread-header">
-        <div>
+      <article class="feedback-message original">
+        <div class="feedback-original-title">
           <h3>${escapeHtml(thread.title)}</h3>
         </div>
-        <time>${escapeHtml(formatDate(thread.createdAt))}</time>
-      </div>
-
-      <article class="feedback-message original">
         <div class="feedback-message-head">
           <strong>${escapeHtml(feedbackAuthorLabel(thread.authorLabel))}</strong>
           <span>${escapeHtml(formatDate(thread.createdAt))}</span>
         </div>
         <div class="feedback-message-body">${renderFeedbackText(thread.body)}</div>
-        ${feedbackOwnerTokens[thread.id] ? `
-          <div class="feedback-original-footer">
-            <button class="feedback-delete-button" id="feedbackDeleteBtn" type="button" aria-label="${t("删除帖子", "Delete thread")}" title="${t("删除帖子", "Delete thread")}">
-              ${icon("trash-2")}
+        <div class="feedback-original-footer">
+          <div class="feedback-card-actions">
+            <button class="feedback-icon-action feedback-like-button ${liked ? "active" : ""}" id="feedbackLikeBtn" type="button" ${liked ? "disabled" : ""} aria-label="${t("点赞", "Like")}" title="${t("点赞", "Like")}">
+              ${icon("thumbs-up")}<span>${Number(thread.likeCount || 0)}</span>
+            </button>
+            <button class="feedback-icon-action" id="openFeedbackReplyDialogBtn" type="button" aria-label="${t("回复", "Reply")}" title="${t("回复", "Reply")}">
+              ${icon("message-square")}
             </button>
           </div>
-        ` : ""}
+          ${feedbackOwnerTokens[thread.id] ? `
+            <button class="feedback-icon-action feedback-delete-button" id="feedbackDeleteBtn" type="button" aria-label="${t("删除帖子", "Delete thread")}" title="${t("删除帖子", "Delete thread")}">
+              ${icon("trash-2")}
+            </button>
+          ` : ""}
+        </div>
       </article>
-
-      <div class="feedback-thread-actions">
-        <button class="secondary-action feedback-like-button ${liked ? "active" : ""}" id="feedbackLikeBtn" type="button" ${liked ? "disabled" : ""}>
-          ${icon("thumbs-up")}<span>${Number(thread.likeCount || 0)}</span>
-        </button>
-        <button class="secondary-action" id="openFeedbackReplyDialogBtn" type="button">
-          ${icon("message-square")}<span>${t("回复", "Reply")}</span>
-        </button>
-      </div>
 
       <div class="feedback-thread-replies">
         <div class="feedback-thread-subhead">
