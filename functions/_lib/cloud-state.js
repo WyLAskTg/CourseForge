@@ -67,6 +67,7 @@ const schemaStatements = [
     author_user_id TEXT,
     author_email TEXT,
     author_label TEXT,
+    is_developer INTEGER NOT NULL DEFAULT 0,
     body TEXT NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -84,7 +85,8 @@ const schemaMigrations = [
   "ALTER TABLE feedback_threads ADD COLUMN like_count INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE feedback_threads ADD COLUMN owner_token_hash TEXT",
   "ALTER TABLE feedback_threads ADD COLUMN author_label TEXT",
-  "ALTER TABLE feedback_threads ADD COLUMN is_anonymous INTEGER NOT NULL DEFAULT 1"
+  "ALTER TABLE feedback_threads ADD COLUMN is_anonymous INTEGER NOT NULL DEFAULT 1",
+  "ALTER TABLE feedback_replies ADD COLUMN is_developer INTEGER NOT NULL DEFAULT 0"
 ];
 
 export function json(data, init = {}) {

@@ -88,8 +88,8 @@ let feedbackNotice = "";
 let feedbackDraftTitle = "";
 let feedbackDraftBody = "";
 let feedbackDraftNickname = "";
-let feedbackDraftAnonymous = true;
 let feedbackReplyDraft = "";
+let feedbackReplyNickname = "";
 let feedbackViewer = { authenticated: false, canReply: false, email: "" };
 let feedbackLikedIds = loadFeedbackLikedIds();
 let feedbackOwnerTokens = loadFeedbackOwnerTokens();
@@ -604,10 +604,6 @@ function attachEvents(activeGeneration) {
   document.getElementById("feedbackNickname")?.addEventListener("input", (event) => {
     feedbackDraftNickname = event.target.value;
   });
-  document.getElementById("feedbackAnonymous")?.addEventListener("change", (event) => {
-    feedbackDraftAnonymous = event.target.checked;
-    render();
-  });
   const feedbackBodyInput = document.getElementById("feedbackBody");
   autoResizeTextarea(feedbackBodyInput);
   feedbackBodyInput?.addEventListener("input", (event) => {
@@ -617,6 +613,9 @@ function attachEvents(activeGeneration) {
   document.getElementById("feedbackReplyForm")?.addEventListener("submit", handleFeedbackReplySubmit);
   document.getElementById("feedbackReplyBody")?.addEventListener("input", (event) => {
     feedbackReplyDraft = event.target.value;
+  });
+  document.getElementById("feedbackReplyNickname")?.addEventListener("input", (event) => {
+    feedbackReplyNickname = event.target.value;
   });
   document.getElementById("feedbackLikeBtn")?.addEventListener("click", handleFeedbackLike);
   document.getElementById("feedbackDeleteBtn")?.addEventListener("click", handleFeedbackDelete);
@@ -875,8 +874,8 @@ async function handleFeedbackSubmit(event) {
     return;
   }
 
-  if (!feedbackDraftAnonymous && !nickname) {
-    feedbackError = t("请输入公开昵称，或选择匿名发布。", "Enter a public nickname or post anonymously.");
+  if (!nickname) {
+    feedbackError = t("请输入昵称。", "Please enter a nickname.");
     render();
     return;
   }
@@ -890,7 +889,7 @@ async function handleFeedbackSubmit(event) {
     const ownerToken = createFeedbackOwnerToken();
     const data = await apiJson("/api/feedback", {
       method: "POST",
-      body: { title, body, ownerToken, nickname, isAnonymous: feedbackDraftAnonymous }
+      body: { title, body, ownerToken, nickname }
     });
 
     feedbackItems = Array.isArray(data.items) ? data.items : feedbackItems;
@@ -920,8 +919,9 @@ async function handleFeedbackReplySubmit(event) {
   if (!activeFeedbackId) return;
 
   const body = feedbackReplyDraft.trim();
-  if (!body) {
-    feedbackError = t("请先输入回复内容。", "Please enter a reply before posting.");
+  const nickname = feedbackReplyNickname.trim();
+  if (!nickname || !body) {
+    feedbackError = t("请输入昵称和回复内容。", "Please enter a nickname and reply.");
     render();
     return;
   }
@@ -934,7 +934,7 @@ async function handleFeedbackReplySubmit(event) {
   try {
     const data = await apiJson("/api/feedback", {
       method: "POST",
-      body: { threadId: activeFeedbackId, body }
+      body: { threadId: activeFeedbackId, body, nickname }
     });
 
     feedbackItems = Array.isArray(data.items) ? data.items : feedbackItems;
@@ -2887,16 +2887,10 @@ function feedbackCenterPanel(showHeading = true) {
           </div>
         </div>
         <div class="feedback-author-controls">
-          <label class="feedback-anonymous-toggle">
-            <input id="feedbackAnonymous" type="checkbox" ${feedbackDraftAnonymous ? "checked" : ""} />
-            <span>${t("匿名发布", "Post anonymously")}</span>
+          <label class="feedback-nickname-field">
+            <span>${t("昵称", "Nickname")}</span>
+            <input id="feedbackNickname" maxlength="40" value="${escapeAttr(feedbackDraftNickname)}" />
           </label>
-          ${feedbackDraftAnonymous ? "" : `
-            <label class="feedback-nickname-field">
-              <span>${t("公开昵称", "Public nickname")}</span>
-              <input id="feedbackNickname" maxlength="40" placeholder="${t("昵称", "Nickname")}" value="${escapeAttr(feedbackDraftNickname)}" />
-            </label>
-          `}
         </div>
         <input id="feedbackTitle" maxlength="90" placeholder="${t("标题", "Title")}" value="${escapeAttr(feedbackDraftTitle)}" />
         <textarea id="feedbackBody" maxlength="1800" placeholder="${t("写下你的建议、体验问题，或你希望我们下一步做什么。", "Write your suggestion, pain point, or what you want us to build next.")}">${escapeHtml(feedbackDraftBody)}</textarea>
@@ -3011,6 +3005,10 @@ function feedbackThreadView(thread) {
 
       <form class="feedback-reply-form" id="feedbackReplyForm">
         <label>
+          <span>${t("昵称", "Nickname")}</span>
+          <input id="feedbackReplyNickname" maxlength="40" value="${escapeAttr(feedbackReplyNickname)}" />
+        </label>
+        <label>
           <span>${t("回复", "Reply")}</span>
           <textarea id="feedbackReplyBody" maxlength="1800" placeholder="${t("写下你的回复。", "Write your reply.")}">${escapeHtml(feedbackReplyDraft)}</textarea>
         </label>
@@ -3029,7 +3027,10 @@ function feedbackReplyItem(reply) {
   return `
     <article class="feedback-message reply">
       <div class="feedback-message-head">
-        <strong>${escapeHtml(feedbackAuthorLabel(reply.authorLabel))}</strong>
+        <div class="feedback-reply-author">
+          <strong>${escapeHtml(feedbackAuthorLabel(reply.authorLabel))}</strong>
+          ${reply.isDeveloper ? `<span class="developer-reply-badge">${t("开发者回复", "Developer reply")}</span>` : ""}
+        </div>
         <span>${escapeHtml(formatDate(reply.createdAt))}</span>
       </div>
       <div class="feedback-message-body">${renderFeedbackText(reply.body)}</div>

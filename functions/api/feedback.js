@@ -63,11 +63,12 @@ async function handlePost(request, env, db) {
     }
 
     const replyBody = normalizeFeedbackText(body?.body, BODY_LIMIT);
-    if (!replyBody) {
-      return json({ error: "Reply content cannot be empty." }, { status: 400 });
+    const replyNickname = normalizeFeedbackText(body?.nickname, NICKNAME_LIMIT);
+    if (!replyBody || !replyNickname) {
+      return json({ error: "Reply nickname and content are required." }, { status: 400 });
     }
 
-    const thread = await createFeedbackReply(db, threadId, viewer, replyBody);
+    const thread = await createFeedbackReply(db, threadId, viewer, replyBody, replyNickname);
     if (!thread) {
       return json({ error: "Feedback thread not found." }, { status: 404 });
     }
@@ -86,21 +87,20 @@ async function handlePost(request, env, db) {
   }
 
   const ownerToken = String(body?.ownerToken || "").trim();
-  const isAnonymous = body?.isAnonymous !== false;
   const nickname = normalizeFeedbackText(body?.nickname, NICKNAME_LIMIT);
   if (ownerToken.length < 24) {
     return json({ error: "A valid deletion token is required." }, { status: 400 });
   }
-  if (!isAnonymous && !nickname) {
-    return json({ error: "Please enter a public nickname or post anonymously." }, { status: 400 });
+  if (!nickname) {
+    return json({ error: "Please enter a public nickname." }, { status: 400 });
   }
 
   const thread = await createFeedbackThread(db, {
     title,
     body: threadBody,
     ownerToken,
-    authorLabel: isAnonymous ? "Anonymous" : nickname,
-    isAnonymous
+    authorLabel: nickname,
+    isAnonymous: false
   });
   const viewer = await resolveViewer(request, env);
   return json({
@@ -216,20 +216,19 @@ function safeEqual(left, right) {
   return mismatch === 0;
 }
 
-async function createFeedbackReply(db, threadId, viewer, body) {
+async function createFeedbackReply(db, threadId, viewer, body, nickname) {
   const existing = await db.prepare("SELECT id FROM feedback_threads WHERE id = ?").bind(threadId).first();
   if (!existing) return null;
 
   const now = new Date().toISOString();
   const replyId = newFeedbackId("reply");
   const isDeveloper = Boolean(viewer?.isDeveloper);
-  const authorLabel = isDeveloper ? "Developer" : "Anonymous";
 
   await db.batch([
     db.prepare(
-      `INSERT INTO feedback_replies (id, thread_id, author_user_id, author_email, author_label, body, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(replyId, threadId, viewer?.userId || null, isDeveloper ? viewer?.email || "" : null, authorLabel, body, now, now),
+      `INSERT INTO feedback_replies (id, thread_id, author_user_id, author_email, author_label, is_developer, body, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(replyId, threadId, viewer?.userId || null, isDeveloper ? viewer?.email || "" : null, nickname, isDeveloper ? 1 : 0, body, now, now),
     db.prepare("UPDATE feedback_threads SET updated_at = ? WHERE id = ?").bind(now, threadId)
   ]);
 
@@ -285,7 +284,7 @@ async function readFeedbackThread(db, threadId) {
   if (!threadRow) return null;
 
   const repliesResult = await db.prepare(
-    `SELECT id, author_label, body, created_at, updated_at
+    `SELECT id, author_label, is_developer, body, created_at, updated_at
      FROM feedback_replies
      WHERE thread_id = ?
      ORDER BY created_at ASC`
@@ -296,6 +295,7 @@ async function readFeedbackThread(db, threadId) {
     replies: (repliesResult.results || []).map((row) => ({
       id: row.id,
       authorLabel: row.author_label || "Developer",
+      isDeveloper: Number(row.is_developer) === 1 || String(row.author_label || "").toLowerCase() === "developer",
       body: row.body || "",
       createdAt: row.created_at,
       updatedAt: row.updated_at || row.created_at

@@ -1619,21 +1619,6 @@ h2 {
   gap: 10px;
 }
 
-.feedback-anonymous-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  width: fit-content;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.feedback-anonymous-toggle input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-}
-
 .feedback-nickname-field {
   display: grid;
   gap: 6px;
@@ -1773,6 +1758,25 @@ h2 {
 
 .feedback-message-head {
   flex-wrap: wrap;
+}
+
+.feedback-reply-author {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.feedback-message-head .developer-reply-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: var(--green);
+  background: var(--green-soft);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .feedback-message-body {
