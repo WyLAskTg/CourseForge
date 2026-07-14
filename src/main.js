@@ -2952,8 +2952,10 @@ function feedbackListItem(item) {
       <p>${escapeHtml(feedbackPreviewText(item.body))}</p>
       <div class="feedback-item-meta">
         <span>${escapeHtml(feedbackAuthorLabel(item.authorLabel))}</span>
-        <span>${escapeHtml(t(`${item.likeCount || 0} 赞`, `${item.likeCount || 0} likes`))}</span>
-        <span>${escapeHtml(t(`${item.replyCount || 0} 条回复`, `${item.replyCount || 0} replies`))}</span>
+        <span class="feedback-item-stats">
+          <span>${escapeHtml(t(`${item.likeCount || 0} 赞`, `${item.likeCount || 0} likes`))}</span>
+          <span>${escapeHtml(t(`${item.replyCount || 0} 条回复`, `${item.replyCount || 0} replies`))}</span>
+        </span>
       </div>
     </button>
   `;
