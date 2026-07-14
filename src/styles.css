@@ -605,6 +605,22 @@ textarea:focus {
   min-width: 0;
 }
 
+.developer-account-badge {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: #8a5a00;
+  background: #fff0b3;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.settings-logout-button {
+  min-height: 34px;
+  padding: 0 12px;
+}
+
 .settings-account-email {
   color: var(--text) !important;
   font-size: 14px !important;

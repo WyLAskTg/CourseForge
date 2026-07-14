@@ -392,7 +392,6 @@ function attachEvents(activeGeneration) {
     isSettingsDialogOpen = false;
     openAuthDialog();
   });
-  document.getElementById("settingsSyncNowBtn")?.addEventListener("click", () => pushCloudState({ renderAfter: true }));
   document.getElementById("settingsLogoutBtn")?.addEventListener("click", handleLogout);
   document.querySelectorAll("[data-settings-tab]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1368,9 +1367,7 @@ function closeAuthDialog() {
 function openSettingsDialog() {
   isSettingsDialogOpen = true;
   render();
-  if (!feedbackLoaded) {
-    refreshFeedbackBoard({ keepSelection: true, loadThread: false });
-  }
+  refreshFeedbackBoard({ keepSelection: true, loadThread: false, quiet: true });
 }
 
 function closeSettingsDialog() {
@@ -2552,7 +2549,10 @@ function settingsAccountDataSection(documents, generations) {
     </div>
     <div class="settings-content-grid settings-account-grid">
       <section class="settings-admin-card settings-account-card">
-        <div class="settings-card-head"><h3>${t("账号信息", "Account")}</h3></div>
+        <div class="settings-card-head">
+          <h3>${t("账号信息", "Account")}</h3>
+          ${currentUser ? `<button class="secondary-action settings-logout-button" id="settingsLogoutBtn" type="button">${t("登出", "Log out")}</button>` : ""}
+        </div>
         ${settingsAccountPanel()}
       </section>
       <section class="settings-admin-card">
@@ -2636,11 +2636,8 @@ function settingsAccountPanel() {
     <div class="settings-account-stack">
       <div class="settings-account-identity">
         <p class="settings-account-email">${escapeHtml(currentUser.email)}</p>
+        ${feedbackViewer.isDeveloper ? `<span class="developer-account-badge">${t("开发者", "Developer")}</span>` : ""}
         ${statusText ? `<span class="auth-status ${escapeAttr(cloudSyncStatus.level)}">${escapeHtml(statusText)}</span>` : ""}
-      </div>
-      <div class="settings-inline-actions">
-        <button class="secondary-action" id="settingsSyncNowBtn" type="button">${t("立即同步", "Sync now")}</button>
-        <button class="secondary-action" id="settingsLogoutBtn" type="button">${t("登出", "Log out")}</button>
       </div>
     </div>
   `;
