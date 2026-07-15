@@ -1555,7 +1555,7 @@ async function handleFilesSelected(event) {
         createdAt: new Date().toISOString()
       };
 
-      parseMessage = t(`正在检查 ${file.name} 与课程的相关性`, `Checking ${file.name} against this course`);
+      parseMessage = t("正在检查资料与当前课程的相关性", "Checking material relevance to the current course");
       render();
       const relevance = await checkDocumentRelevance(documentRecord, activeCourse, [...getCourseDocuments(), ...uploaded]);
       if (relevance && relevance.status !== "relevant") {
@@ -2480,7 +2480,6 @@ function documentRelevanceDialog() {
             </div>
           </div>
           <strong class="relevance-summary">${t("资料内容貌似与当前课程无关。", "This material appears unrelated to the current course.")}</strong>
-          <p>${escapeHtml(pendingRelevanceReview.reason || t("该资料与当前课程的关系不明确。", "Its relationship to the current course is unclear."))}</p>
         </div>
         <div class="modal-actions relevance-actions">
           <button class="secondary-action" id="removeRelevanceDocumentBtn" type="button">${icon("trash-2")}<span>${t("移除资料", "Remove")}</span></button>
