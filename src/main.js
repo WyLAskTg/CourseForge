@@ -153,7 +153,7 @@ function render() {
             <div class="brand-mark">${icon("brain")}</div>
             <div>
               <strong>CourseForge</strong>
-              ${bi("课程综合复习平台", "课程综合复习平台")}
+              ${bi("课程综合复习平台", "Course Review Platform")}
             </div>
           </div>
           <div class="header-actions">
