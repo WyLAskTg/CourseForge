@@ -454,17 +454,9 @@ textarea:focus {
   overflow-wrap: anywhere;
 }
 
-.relevance-file-row span,
-.relevance-detail span,
-.relevance-dialog-body .relevance-note {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.relevance-detail {
-  display: grid;
-  gap: 4px;
-  padding: 0 2px;
+.relevance-summary {
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 .relevance-actions .secondary-action,
@@ -868,7 +860,7 @@ input.needs-value::placeholder {
   min-width: 220px;
   height: 44px;
   color: var(--text);
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 900;
 }
 

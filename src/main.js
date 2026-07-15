@@ -2477,17 +2477,10 @@ function documentRelevanceDialog() {
             ${icon("file-question")}
             <div>
               <strong>${escapeHtml(pendingRelevanceReview.fileName)}</strong>
-              <span>${escapeHtml(t(`当前课程：${pendingRelevanceReview.courseName}`, `Current course: ${pendingRelevanceReview.courseName}`))}</span>
             </div>
           </div>
-          ${pendingRelevanceReview.documentTopic ? `
-            <div class="relevance-detail">
-              <span>${t("识别主题", "Detected topic")}</span>
-              <strong>${escapeHtml(pendingRelevanceReview.documentTopic)}</strong>
-            </div>
-          ` : ""}
+          <strong class="relevance-summary">${t("资料内容貌似与当前课程无关。", "This material appears unrelated to the current course.")}</strong>
           <p>${escapeHtml(pendingRelevanceReview.reason || t("该资料与当前课程的关系不明确。", "Its relationship to the current course is unclear."))}</p>
-          <p class="relevance-note">${t("只有选择“仍然使用”后，这份资料才会保存到当前课程。", "This material will be saved only if you choose Use anyway.")}</p>
         </div>
         <div class="modal-actions relevance-actions">
           <button class="secondary-action" id="removeRelevanceDocumentBtn" type="button">${icon("trash-2")}<span>${t("移除资料", "Remove")}</span></button>
