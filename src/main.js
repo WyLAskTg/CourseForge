@@ -107,6 +107,8 @@ let isFeedbackThreadModalOpen = false;
 let isFeedbackReplyDialogOpen = false;
 let topToast = null;
 let topToastTimer = null;
+let pendingRelevanceReview = null;
+let relevanceReviewResolver = null;
 
 render();
 initializeCloudSession();
@@ -139,6 +141,7 @@ function render() {
   rootElement.innerHTML = `
     <div class="app-shell">
       ${courseDialog()}
+      ${documentRelevanceDialog()}
       ${studyCollectionDialog()}
       ${renameGenerationDialog()}
       ${authDialog()}
@@ -410,6 +413,12 @@ function attachEvents(activeGeneration) {
   });
   document.getElementById("courseDialogName")?.addEventListener("input", (event) => {
     event.target.classList.remove("needs-value");
+  });
+  document.getElementById("keepRelevanceDocumentBtn")?.addEventListener("click", () => resolveDocumentRelevanceReview(true));
+  document.getElementById("removeRelevanceDocumentBtn")?.addEventListener("click", () => resolveDocumentRelevanceReview(false));
+  document.getElementById("closeRelevanceDialogBtn")?.addEventListener("click", () => resolveDocumentRelevanceReview(false));
+  document.getElementById("relevanceDialogBackdrop")?.addEventListener("click", (event) => {
+    if (event.target.id === "relevanceDialogBackdrop") resolveDocumentRelevanceReview(false);
   });
   document.getElementById("courseSelect")?.addEventListener("change", (event) => {
     const courseId = event.target.value;
@@ -1523,6 +1532,7 @@ async function handleFilesSelected(event) {
   for (const file of files) {
     const documentId = crypto.randomUUID();
     let documentRecord;
+    let usedOcr = false;
 
     try {
       parseMessage = t(`正在解析 ${file.name}`, `Parsing ${file.name}`);
@@ -1533,7 +1543,7 @@ async function handleFilesSelected(event) {
           render();
         }
       });
-      if (extracted.parseMode === "ocr") ocrUsedCount += 1;
+      usedOcr = extracted.parseMode === "ocr";
       documentRecord = {
         id: documentId,
         courseId: activeCourse.id,
@@ -1544,6 +1554,14 @@ async function handleFilesSelected(event) {
         safety: analyzeSafety(extracted.text),
         createdAt: new Date().toISOString()
       };
+
+      parseMessage = t(`正在检查 ${file.name} 与课程的相关性`, `Checking ${file.name} against this course`);
+      render();
+      const relevance = await checkDocumentRelevance(documentRecord, activeCourse, [...getCourseDocuments(), ...uploaded]);
+      if (relevance && relevance.status !== "relevant") {
+        const shouldKeep = await requestDocumentRelevanceDecision(file.name, activeCourse.name, relevance);
+        if (!shouldKeep) continue;
+      }
     } catch (error) {
       documentRecord = {
         id: documentId,
@@ -1567,15 +1585,68 @@ async function handleFilesSelected(event) {
     }
 
     uploaded.push(documentRecord);
+    if (usedOcr) ocrUsedCount += 1;
   }
 
-  persist({ ...state, documents: [...uploaded, ...state.documents] });
+  if (uploaded.length) {
+    persist({ ...state, documents: [...uploaded, ...state.documents] });
+  }
   parseMessage = ocrUsedCount
     ? t(`${uploaded.length} 个文件已加入课程资料库，其中 ${ocrUsedCount} 个扫描件使用了 OCR`, `${uploaded.length} file(s) added, with OCR used for ${ocrUsedCount} scanned PDF(s)`)
     : t(`${uploaded.length} 个文件已加入课程资料库`, `${uploaded.length} file(s) added to this course`);
   isParsing = false;
   event.target.value = "";
   render();
+}
+
+async function checkDocumentRelevance(documentRecord, course, existingDocuments) {
+  if (!documentRecord.text.trim()) return null;
+
+  try {
+    const data = await apiJson("/api/relevance", {
+      method: "POST",
+      body: {
+        language: uiLanguage,
+        course: { name: course.name },
+        existingMaterials: existingDocuments.map((document) => ({
+          name: document.name,
+          text: document.text
+        })),
+        document: {
+          name: documentRecord.name,
+          text: documentRecord.text
+        }
+      }
+    });
+
+    if (data.configured === false || !data.review) return null;
+    return {
+      status: ["relevant", "uncertain", "unrelated"].includes(data.review.status) ? data.review.status : "uncertain",
+      confidence: clamp(Number(data.review.confidence) || 0, 0, 1),
+      documentTopic: String(data.review.documentTopic || ""),
+      reason: String(data.review.reason || "")
+    };
+  } catch {
+    // A temporary classifier failure should not prevent users from uploading course material.
+    return null;
+  }
+}
+
+function requestDocumentRelevanceDecision(fileName, courseName, review) {
+  if (relevanceReviewResolver) relevanceReviewResolver(false);
+  pendingRelevanceReview = { fileName, courseName, ...review };
+  return new Promise((resolve) => {
+    relevanceReviewResolver = resolve;
+    render();
+  });
+}
+
+function resolveDocumentRelevanceReview(shouldKeep) {
+  const resolve = relevanceReviewResolver;
+  pendingRelevanceReview = null;
+  relevanceReviewResolver = null;
+  render();
+  resolve?.(shouldKeep);
 }
 
 async function handleGenerate() {
@@ -2377,6 +2448,51 @@ function courseDialog() {
             </button>
           </div>
         </form>
+      </section>
+    </div>
+  `;
+}
+
+function documentRelevanceDialog() {
+  if (!pendingRelevanceReview) return "";
+
+  const isUnrelated = pendingRelevanceReview.status === "unrelated";
+  const title = isUnrelated
+    ? t("资料可能与课程无关", "This material may be unrelated")
+    : t("无法确认资料所属课程", "Course relationship is unclear");
+
+  return `
+    <div class="modal-backdrop" id="relevanceDialogBackdrop" role="presentation">
+      <section class="modal-card course-dialog relevance-dialog" role="dialog" aria-modal="true" aria-labelledby="relevanceDialogTitle">
+        <div class="modal-heading">
+          <div>
+            <h2 id="relevanceDialogTitle">${escapeHtml(title)}</h2>
+          </div>
+          <button class="icon-button quiet" id="closeRelevanceDialogBtn" type="button" aria-label="${t("关闭", "Close")}">
+            ${icon("x")}
+          </button>
+        </div>
+        <div class="relevance-dialog-body">
+          <div class="relevance-file-row">
+            ${icon("file-question")}
+            <div>
+              <strong>${escapeHtml(pendingRelevanceReview.fileName)}</strong>
+              <span>${escapeHtml(t(`当前课程：${pendingRelevanceReview.courseName}`, `Current course: ${pendingRelevanceReview.courseName}`))}</span>
+            </div>
+          </div>
+          ${pendingRelevanceReview.documentTopic ? `
+            <div class="relevance-detail">
+              <span>${t("识别主题", "Detected topic")}</span>
+              <strong>${escapeHtml(pendingRelevanceReview.documentTopic)}</strong>
+            </div>
+          ` : ""}
+          <p>${escapeHtml(pendingRelevanceReview.reason || t("该资料与当前课程的关系不明确。", "Its relationship to the current course is unclear."))}</p>
+          <p class="relevance-note">${t("只有选择“仍然使用”后，这份资料才会保存到当前课程。", "This material will be saved only if you choose Use anyway.")}</p>
+        </div>
+        <div class="modal-actions relevance-actions">
+          <button class="secondary-action" id="removeRelevanceDocumentBtn" type="button">${icon("trash-2")}<span>${t("移除资料", "Remove")}</span></button>
+          <button class="create-course-button" id="keepRelevanceDocumentBtn" type="button">${icon("check")}<span>${t("仍然使用", "Use anyway")}</span></button>
+        </div>
       </section>
     </div>
   `;

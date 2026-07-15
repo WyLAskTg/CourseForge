@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { generateCourseOutput, resolveGenerationProvider } from "./functions/api/generate.js";
+import { onRequest as handleRelevanceRequest } from "./functions/api/relevance.js";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 5173);
@@ -50,6 +51,20 @@ const server = http.createServer(async (request, response) => {
           error: error.message || "Generation failed."
         });
       }
+      return;
+    }
+
+    if (url.pathname === "/api/relevance") {
+      const body = request.method === "POST" ? await readJsonRequest(request).catch(() => ({})) : undefined;
+      const apiResponse = await handleRelevanceRequest({
+        request: new Request(`http://localhost:${port}/api/relevance`, {
+          method: request.method,
+          headers: { "Content-Type": "application/json" },
+          body: body === undefined ? undefined : JSON.stringify(body)
+        }),
+        env: process.env
+      });
+      sendJson(response, apiResponse.status, await apiResponse.json());
       return;
     }
 

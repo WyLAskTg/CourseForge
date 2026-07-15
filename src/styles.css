@@ -410,6 +410,68 @@ textarea:focus {
   background: var(--amber-soft);
 }
 
+.relevance-dialog {
+  width: min(520px, 100%);
+}
+
+.relevance-dialog-body {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0;
+}
+
+.relevance-dialog-body p {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.relevance-file-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.relevance-file-row > svg {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  color: var(--amber);
+}
+
+.relevance-file-row div {
+  min-width: 0;
+}
+
+.relevance-file-row strong,
+.relevance-file-row span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.relevance-file-row span,
+.relevance-detail span,
+.relevance-dialog-body .relevance-note {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.relevance-detail {
+  display: grid;
+  gap: 4px;
+  padding: 0 2px;
+}
+
+.relevance-actions .secondary-action,
+.relevance-actions .create-course-button {
+  gap: 7px;
+}
+
 .settings-launcher {
   position: fixed;
   left: 24px;
