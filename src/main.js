@@ -1535,7 +1535,7 @@ async function handleFilesSelected(event) {
     let usedOcr = false;
 
     try {
-      parseMessage = t(`正在解析 ${file.name}`, `Parsing ${file.name}`);
+      parseMessage = t("正在解析资料", "Parsing material");
       render();
       const extracted = await extractTextFromFile(file, {
         onStatus: (message) => {
@@ -1879,7 +1879,7 @@ async function extractTextFromFile(file, { onStatus } = {}) {
   }
 
   if (extension === "pdf") {
-    onStatus?.(t(`正在解析 PDF 文本：${file.name}`, `Reading PDF text: ${file.name}`));
+    onStatus?.(t("正在解析 PDF 文本", "Reading PDF text"));
     const pdfjsLib = await loadPdfJs();
     const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
     const pages = [];
@@ -1906,7 +1906,7 @@ async function extractTextFromFile(file, { onStatus } = {}) {
     }
 
     const ocrLanguages = chooseOcrLanguages(file.name, directText);
-    onStatus?.(t(`检测到扫描版 PDF，正在进行 OCR：${file.name}`, `Scanned PDF detected, running OCR: ${file.name}`));
+    onStatus?.(t("检测到扫描版 PDF，正在进行 OCR", "Scanned PDF detected, running OCR"));
     try {
       const ocrText = await extractPdfTextWithOcr(pdf, onStatus, ocrLanguages);
       if (ocrText.trim()) {
