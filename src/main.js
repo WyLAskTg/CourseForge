@@ -139,6 +139,8 @@ function disableOuterScrollRestoration() {
 }
 
 function render() {
+  const outputScrollState = captureOutputScrollState();
+  const shouldRestoreOutputScroll = !pendingScrollTarget;
   document.documentElement.lang = uiLanguage === "zh" ? "zh-CN" : "en";
   document.title = t("CourseForge | 课程复习助手", "CourseForge | Course Review Assistant");
 
@@ -417,6 +419,9 @@ function render() {
   `;
 
   attachEvents(activeGeneration);
+  if (shouldRestoreOutputScroll) {
+    restoreOutputScrollState(outputScrollState, activeGeneration?.id);
+  }
   window.lucide?.createIcons({ strokeWidth: 2 });
   queueMathTypeset();
   startExamTimerLoop();
@@ -916,7 +921,7 @@ async function refreshFeedbackBoard({ keepSelection = true, loadThread = true, q
   }
 
   feedbackLoading = false;
-  render();
+  if (!quiet) render();
 }
 
 async function loadFeedbackThread(feedbackId, { quiet = false } = {}) {
@@ -1348,21 +1353,25 @@ function queueScrollToPendingTarget() {
 }
 
 function renderPreservingOutputScroll() {
-  const scroller = document.querySelector(".output-panel > .generated-stack");
-  const scrollTop = scroller?.scrollTop || 0;
-  const scrollLeft = scroller?.scrollLeft || 0;
-
   render();
+}
 
-  const restore = () => {
-    const nextScroller = document.querySelector(".output-panel > .generated-stack");
-    if (!nextScroller) return;
-    nextScroller.scrollTop = scrollTop;
-    nextScroller.scrollLeft = scrollLeft;
+function captureOutputScrollState() {
+  const scroller = document.querySelector(".output-panel > .generated-stack");
+  if (!scroller) return null;
+  return {
+    generationId: scroller.dataset.outputGenerationId || "",
+    scrollTop: scroller.scrollTop,
+    scrollLeft: scroller.scrollLeft
   };
+}
 
-  window.requestAnimationFrame(restore);
-  window.setTimeout(restore, 80);
+function restoreOutputScrollState(snapshot, generationId) {
+  if (!snapshot || snapshot.generationId !== String(generationId || "")) return;
+  const scroller = document.querySelector(".output-panel > .generated-stack");
+  if (!scroller || scroller.dataset.outputGenerationId !== snapshot.generationId) return;
+  scroller.scrollTop = snapshot.scrollTop;
+  scroller.scrollLeft = snapshot.scrollLeft;
 }
 
 function autoResizeTextarea(textarea) {
@@ -3253,7 +3262,7 @@ function generatedOutput(generation) {
   const output = generation.output;
   const exam = generation.exam;
   return `
-    <div class="generated-stack">
+    <div class="generated-stack" data-output-generation-id="${escapeAttr(generation.id)}">
       ${exam?.mode === "exam" ? examToolbar(generation) : ""}
       <div class="result-list">
         ${output.items.map((item, index) => resultItem(generation, output, item, index)).join("")}
@@ -3385,7 +3394,7 @@ function choiceOptionsMarkup(generation, item, response, itemIndex) {
         const selected = selectedLetters.has(letter);
         if (exam && !submitted) {
           return `
-            <label class="question-option ${selected ? "selected" : ""}">
+            <label class="question-option">
               <input type="${multiple ? "checkbox" : "radio"}" name="exam-choice-${escapeAttr(generation.id)}-${itemIndex}" value="${letter}" data-exam-choice="1" data-exam-id="${escapeAttr(generation.id)}" data-item-index="${itemIndex}" ${selected ? "checked" : ""} />
               <span class="option-letter">${letter}</span>
               <span class="option-text">${renderRichText(stripChoicePrefix(option))}</span>
