@@ -803,7 +803,7 @@ function scheduleCloudSync() {
   cloudSyncStatus = { level: "pending", code: "pending" };
   window.clearTimeout(cloudSyncTimer);
   cloudSyncTimer = window.setTimeout(() => {
-    pushCloudState({ renderAfter: true });
+    pushCloudState({ renderAfter: false });
   }, SYNC_DEBOUNCE_MS);
 }
 
