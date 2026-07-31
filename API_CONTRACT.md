@@ -29,6 +29,8 @@ Example response:
         "body": "Final student-facing question text.",
         "answer": "Final answer or marking guide.",
         "points": 20,
+        "options": [],
+        "choiceType": "none",
         "meta": ["Standard", "Short Answer"],
         "checks": []
       }

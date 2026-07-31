@@ -268,12 +268,12 @@ function deterministicGrade(item, language) {
   const studentAnswer = normalizeAnswerText(item.studentAnswer);
   const referenceAnswer = normalizeAnswerText(item.referenceAnswer);
   const exactMatch = studentAnswer && studentAnswer === referenceAnswer;
-  const studentChoice = extractChoiceLetter(item.studentAnswer);
-  const referenceChoice = extractChoiceLetter(item.referenceAnswer);
+  const studentChoices = extractChoiceLetters(item.studentAnswer);
+  const referenceChoices = extractChoiceLetters(item.referenceAnswer);
   const choiceMatch = hasMultipleChoiceOptions(item.question)
-    && studentChoice
-    && referenceChoice
-    && studentChoice === referenceChoice;
+    && studentChoices.length
+    && referenceChoices.length
+    && studentChoices.join(",") === referenceChoices.join(",");
 
   if (!exactMatch && !choiceMatch) return null;
   return {
@@ -294,12 +294,13 @@ function normalizeAnswerText(value) {
     .toLowerCase();
 }
 
-function extractChoiceLetter(value) {
-  const match = String(value || "")
+function extractChoiceLetters(value) {
+  const source = String(value || "")
     .normalize("NFKC")
     .trim()
-    .match(/^(?:答案\s*[:：]\s*)?[\(\[（【]?\s*([A-H])\s*[\)\]）】.:：、]?/i);
-  return match?.[1]?.toUpperCase() || "";
+    .replace(/^(?:答案|answer)\s*[:：]\s*/i, "");
+  const leading = source.match(/^[\(\[（【]?\s*([A-H](?:\s*[,，、/&+]\s*[A-H])*)/i)?.[1] || "";
+  return [...new Set((leading.match(/[A-H]/gi) || []).map((letter) => letter.toUpperCase()))].sort();
 }
 
 function hasMultipleChoiceOptions(question) {

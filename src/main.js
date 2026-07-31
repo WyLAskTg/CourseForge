@@ -516,6 +516,18 @@ function attachEvents(activeGeneration) {
       autoResizeTextarea(textarea);
     });
   });
+  document.querySelectorAll("[data-exam-choice]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const itemIndex = Number(input.dataset.itemIndex);
+      const value = input.type === "checkbox"
+        ? [...document.querySelectorAll(`[data-exam-choice][data-exam-id="${escapeSelectorValue(input.dataset.examId)}"][data-item-index="${itemIndex}"]:checked`)]
+          .map((choice) => choice.value)
+          .sort()
+          .join(", ")
+        : input.value;
+      updateExamResponse(input.dataset.examId, itemIndex, value);
+    });
+  });
   document.querySelector("[data-submit-exam]")?.addEventListener("click", (event) => {
     submitExam(event.currentTarget.dataset.submitExam);
   });
@@ -1786,13 +1798,16 @@ function buildGenerationRequest({ task, course, documents, corpus, safety, setti
       title: "string",
       type: "knowledge | pitfalls | quiz | mock | refusal",
       checks: [{ label: "string", status: "pass | review | blocked", detail: "string" }],
-      items: [{ title: "string", body: "string", answer: "string optional", points: "number", meta: ["string"], checks: [] }]
+      items: [{ title: "string", body: "string", answer: "string optional", points: "number", options: ["string"], choiceType: "none | single | multiple", meta: ["string"], checks: [] }]
     },
     generationRules: [
       "Use the uploaded course materials as source context.",
       "Generate final student-facing content only. Do not return prompts, instructions, or hidden reasoning.",
       "For quizzes and mock exams, every question must be answerable from the question conditions and course context.",
       "For assessment items, assign a positive integer points value reflecting question complexity.",
+      "For multiple-choice questions, return every complete choice in item.options. Return [] for non-multiple-choice questions.",
+      "Set item.choiceType to single for one-answer questions, multiple for select-all questions, and none when options is empty.",
+      "Do not ask which option or which statement is correct unless item.options contains the choices.",
       "Do not reuse decisive data, cases, wording, or contexts from uploaded exams.",
       "Use clear line breaks for multi-part questions, solutions, and marking guides.",
       "Do not use external image URLs or Markdown image links.",
@@ -1884,7 +1899,7 @@ async function submitExam(generationId, { automatic = false } = {}) {
         items: generation.output.items.map((item, index) => ({
           index,
           title: item.title,
-          question: item.body,
+          question: formatQuestionForGrading(item),
           referenceAnswer: item.answer,
           maxPoints: generation.exam.responses[index]?.maxPoints || 0,
           studentAnswer: generation.exam.responses[index]?.text || ""
@@ -1982,6 +1997,15 @@ function formatExamRemaining(totalSeconds) {
     : `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+function formatQuestionForGrading(item) {
+  const options = Array.isArray(item?.options) ? item.options : [];
+  if (!options.length) return String(item?.body || "");
+  return [
+    String(item?.body || ""),
+    ...options.map((option, index) => `${String.fromCharCode(65 + index)}. ${stripChoicePrefix(option)}`)
+  ].join("\n");
+}
+
 function normalizeAiOutput(data) {
   const output = data?.output || data;
   if (!output || !Array.isArray(output.items)) {
@@ -1998,6 +2022,8 @@ function normalizeAiOutput(data) {
       body: item.body || "",
       answer: item.answer || "",
       points: Number(item.points || 0),
+      options: Array.isArray(item.options) ? item.options : [],
+      choiceType: normalizeChoiceType(item.choiceType, item.body, item.options),
       meta: Array.isArray(item.meta) ? item.meta : [],
       checks: Array.isArray(item.checks) ? item.checks : []
     }))
@@ -2586,6 +2612,8 @@ function normalizeGeneratedItem(item = {}) {
     body: String(item.body || ""),
     answer: String(item.answer || ""),
     points: Math.max(0, Number(item.points) || 0),
+    options: Array.isArray(item.options) ? item.options.map(String).filter(Boolean).slice(0, 8) : [],
+    choiceType: normalizeChoiceType(item.choiceType, item.body, item.options),
     meta: Array.isArray(item.meta) ? item.meta : [],
     checks: Array.isArray(item.checks) ? item.checks : [],
     isFavorite: Boolean(item.isFavorite),
@@ -3235,7 +3263,8 @@ function resultItem(generation, output, item, index) {
         ${examResponse ? `<span class="question-points">${examResponse.maxPoints} ${t("分", "pts")}</span>` : ""}
       </div>
       <div class="rich-text result-body">${renderRichText(normalizedItem.body)}</div>
-      ${examResponse ? examResponseMarkup(generation, examResponse, index) : ""}
+      ${choiceOptionsMarkup(generation, normalizedItem, examResponse, index)}
+      ${examResponse ? examResponseMarkup(generation, examResponse, index, normalizedItem) : ""}
       ${canTrackItem ? `
         <div class="result-tools">
           <button class="bookmark-toggle ${normalizedItem.isFavorite ? "active" : ""}" type="button" data-toggle-favorite="1" data-generation-id="${escapeAttr(generation.id)}" data-item-index="${index}">
@@ -3295,8 +3324,9 @@ function examToolbar(generation) {
   `;
 }
 
-function examResponseMarkup(generation, response, index) {
+function examResponseMarkup(generation, response, index, item) {
   const submitted = Boolean(generation.exam?.submittedAt);
+  if (!submitted && item.options.length) return "";
   if (!submitted) {
     return `
       <label class="exam-response-field">
@@ -3316,6 +3346,70 @@ function examResponseMarkup(generation, response, index) {
       ${response.feedback ? `<p class="exam-feedback">${escapeHtml(response.feedback)}</p>` : ""}
     </div>
   `;
+}
+
+function choiceOptionsMarkup(generation, item, response, itemIndex) {
+  if (!item.options.length) {
+    return looksLikeMultipleChoiceQuestion(item.body)
+      ? `<p class="missing-choice-options">${t("该题选项未成功生成，请重新生成本次内容。", "This question's options were not generated. Please generate the content again.")}</p>`
+      : "";
+  }
+
+  const exam = generation.exam?.mode === "exam" ? generation.exam : null;
+  const submitted = Boolean(exam?.submittedAt);
+  const multiple = item.choiceType === "multiple";
+  const selectedLetters = new Set(extractChoiceLetters(response?.text));
+  return `
+    <div class="question-options ${multiple ? "multiple-choice" : "single-choice"}" role="${exam && !submitted ? "group" : "list"}" aria-label="${escapeAttr(multiple ? t("多选题选项", "Multiple-choice options") : t("单选题选项", "Single-choice options"))}">
+      ${item.options.map((option, optionIndex) => {
+        const letter = String.fromCharCode(65 + optionIndex);
+        const selected = selectedLetters.has(letter);
+        if (exam && !submitted) {
+          return `
+            <label class="question-option ${selected ? "selected" : ""}">
+              <input type="${multiple ? "checkbox" : "radio"}" name="exam-choice-${escapeAttr(generation.id)}-${itemIndex}" value="${letter}" data-exam-choice="1" data-exam-id="${escapeAttr(generation.id)}" data-item-index="${itemIndex}" ${selected ? "checked" : ""} />
+              <span class="option-letter">${letter}</span>
+              <span class="option-text">${renderRichText(stripChoicePrefix(option))}</span>
+            </label>
+          `;
+        }
+        return `
+          <div class="question-option ${selected ? "selected" : ""}" role="listitem">
+            <span class="option-letter">${letter}</span>
+            <span class="option-text">${renderRichText(stripChoicePrefix(option))}</span>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function stripChoicePrefix(value) {
+  return String(value || "").replace(/^\s*[A-H][.．、:：)]\s*/i, "").trim();
+}
+
+function extractChoiceLetters(value) {
+  const source = String(value || "")
+    .normalize("NFKC")
+    .trim()
+    .replace(/^(?:答案|answer)\s*[:：]\s*/i, "");
+  const leading = source.match(/^[\(\[（【]?\s*([A-H](?:\s*[,，、/&+]\s*[A-H])*)/i)?.[1] || "";
+  return [...new Set((leading.match(/[A-H]/gi) || []).map((letter) => letter.toUpperCase()))].sort();
+}
+
+function looksLikeMultipleChoiceQuestion(value) {
+  return /(以下|下列).*(哪|何|正确|错误|符合|不符合|合法|不合法)|(哪一项|哪个|请选择|选择题)|\b(which (?:option|statement|of the following)|select|choose)\b/i.test(String(value || ""));
+}
+
+function normalizeChoiceType(value, body, options) {
+  const optionCount = Array.isArray(options) ? options.filter((option) => String(option).trim()).length : 0;
+  if (optionCount < 2) return "none";
+  if (value === "multiple" || value === "single") return value;
+  return looksLikeMultipleSelectionQuestion(body) ? "multiple" : "single";
+}
+
+function looksLikeMultipleSelectionQuestion(value) {
+  return /(多选|可多选|所有正确|全部正确|不止一项|选择所有|所有符合)|\b(select all|all that apply|one or more|multiple answers?|more than one)\b/i.test(String(value || ""));
 }
 
 function getAnswerKey(generationId, index) {

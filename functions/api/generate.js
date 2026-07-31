@@ -172,14 +172,25 @@ async function reviseGeneratedOutput(payload, output, requestRevision) {
     } catch {}
   }
 
-  const circuitIssues = findCircuitRenderingIssues(revised);
-  if (!circuitIssues.length) return revised;
-
-  try {
-    return await requestRevision(buildCircuitRevisionPayload(revised, circuitIssues, payload));
-  } catch {
-    return revised;
+  const choiceIssues = findMissingChoiceOptions(revised);
+  if (choiceIssues.length) {
+    try {
+      revised = await requestRevision(buildChoiceRevisionPayload(revised, choiceIssues));
+    } catch {}
   }
+
+  const circuitIssues = findCircuitRenderingIssues(revised);
+  if (circuitIssues.length) {
+    try {
+      revised = await requestRevision(buildCircuitRevisionPayload(revised, circuitIssues, payload));
+    } catch {}
+  }
+
+  const remainingChoiceIssues = findMissingChoiceOptions(revised);
+  if (remainingChoiceIssues.length) {
+    throw new Error("Generated multiple-choice questions were missing their answer options. Please generate again.");
+  }
+  return revised;
 }
 
 function buildSystemPrompt() {
@@ -194,6 +205,11 @@ function buildSystemPrompt() {
     "For quizzes and mock exams, generate answerable questions with complete conditions and answers or marking guides.",
     "For quizzes and mock exams, always populate each item's answer field. The interface will hide or reveal answers per question.",
     "For quizzes and mock exams, assign each item a positive integer points value based on its complexity. When settings.assessmentMode is exam, make the item points total 100.",
+    "Every item must include an options array. For non-multiple-choice items, return an empty array.",
+    "Every item must include choiceType: none, single, or multiple. Use none when options is empty, single when exactly one option should be selected, and multiple when more than one option may be selected.",
+    "For a choice item, put every complete option in the options array without A/B/C/D prefixes and provide at least two options.",
+    "For single-choice items, make answer begin with the correct option letter. For multiple-choice items, make answer begin with every correct option letter separated by commas, such as A, C.",
+    "Never write a multiple-choice cue such as which option, which statement, 以下哪项, 下列哪个, or 请选择 unless the same item has a complete options array.",
     "Do not copy uploaded exam questions. You may preserve topic and question type, but change decisive data, scenario, wording, and context.",
     "Use clear paragraph breaks. Put each multi-part question, answer step, proof step, or rubric item on its own line.",
     "Never use external image URLs, placeholder image services, Markdown image links, or links such as via.placeholder.com.",
@@ -376,6 +392,8 @@ function normalizeGeneratedOutput(value, payload) {
       body: String(item?.body || ""),
       answer: String(item?.answer || ""),
       points: Math.max(0, Number(item?.points) || 0),
+      options: Array.isArray(item?.options) ? item.options.map(String).filter(Boolean).slice(0, 8) : [],
+      choiceType: normalizeChoiceType(item?.choiceType, item?.body, item?.options),
       meta: Array.isArray(item?.meta) ? item.meta.map(String) : [],
       checks: normalizeChecks(item?.checks)
     })),
@@ -443,6 +461,39 @@ export function findFinalAnswerQualityIssues(output) {
   return issues;
 }
 
+export function findMissingChoiceOptions(output) {
+  const issues = [];
+
+  for (const [index, item] of (output?.items || []).entries()) {
+    const body = String(item?.body || "");
+    const options = Array.isArray(item?.options) ? item.options.filter((option) => String(option).trim()) : [];
+    if (!looksLikeMultipleChoiceQuestion(body) || options.length >= 2) continue;
+    issues.push({
+      item: index + 1,
+      title: String(item?.title || `Item ${index + 1}`),
+      issue: "multiple-choice wording is present but the options array is missing or incomplete"
+    });
+  }
+
+  return issues;
+}
+
+function buildChoiceRevisionPayload(previousOutput, choiceIssues) {
+  return {
+    reason: "Some multiple-choice questions did not include their answer options.",
+    detectedIssues: choiceIssues,
+    previousOutput,
+    instruction: [
+      "Rewrite every affected item so it is complete and answerable.",
+      "If it is a multiple-choice question, put each complete choice in item.options without letter prefixes and provide at least two options.",
+      "Set item.choiceType to single when exactly one option is correct, or multiple when more than one option may be selected.",
+      "For single-choice questions, make item.answer begin with the correct letter. For multiple-choice questions, begin with all correct letters separated by commas.",
+      "If the item is intended to be open response, rewrite the body to remove all choice wording, keep item.options empty, and set item.choiceType to none.",
+      "Preserve all unaffected items, the task type, point values, and the complete JSON schema."
+    ].join(" ")
+  };
+}
+
 export function findCircuitRenderingIssues(output) {
   const issues = [];
 
@@ -460,6 +511,21 @@ export function findCircuitRenderingIssues(output) {
   }
 
   return issues;
+}
+
+function looksLikeMultipleChoiceQuestion(text) {
+  return /(以下|下列).*(哪|何|正确|错误|符合|不符合|合法|不合法)|(哪一项|哪个|请选择|选择题)|\b(which (?:option|statement|of the following)|select|choose)\b/i.test(String(text || ""));
+}
+
+function normalizeChoiceType(value, body, options) {
+  const optionCount = Array.isArray(options) ? options.filter((option) => String(option).trim()).length : 0;
+  if (optionCount < 2) return "none";
+  if (value === "multiple" || value === "single") return value;
+  return looksLikeMultipleSelectionQuestion(body) ? "multiple" : "single";
+}
+
+function looksLikeMultipleSelectionQuestion(text) {
+  return /(多选|可多选|所有正确|全部正确|不止一项|选择所有|所有符合)|\b(select all|all that apply|one or more|multiple answers?|more than one)\b/i.test(String(text || ""));
 }
 
 function hasExploratoryReasoning(text) {
@@ -566,10 +632,12 @@ function outputSchema() {
             body: { type: "string" },
             answer: { type: "string" },
             points: { type: "integer", minimum: 1, maximum: 100 },
+            options: { type: "array", items: { type: "string" }, maxItems: 8 },
+            choiceType: { type: "string", enum: ["none", "single", "multiple"] },
             meta: { type: "array", items: { type: "string" } },
             checks: { type: "array", items: checkSchema }
           },
-          required: ["title", "body", "answer", "points", "meta", "checks"]
+          required: ["title", "body", "answer", "points", "options", "choiceType", "meta", "checks"]
         }
       },
       safety: {
