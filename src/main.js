@@ -115,9 +115,28 @@ let relevanceReviewResolver = null;
 let examTimerInterval = null;
 let gradingExamIds = new Set();
 
+disableOuterScrollRestoration();
 render();
 initializeCloudSession();
 initializeFeedbackCenter();
+
+function disableOuterScrollRestoration() {
+  if ("scrollRestoration" in window.history) {
+    window.history.scrollRestoration = "manual";
+  }
+  const reset = () => {
+    window.scrollTo(0, 0);
+    if (document.scrollingElement) {
+      document.scrollingElement.scrollTop = 0;
+      document.scrollingElement.scrollLeft = 0;
+    }
+  };
+  reset();
+  window.addEventListener("pageshow", () => {
+    reset();
+    window.requestAnimationFrame(reset);
+  });
+}
 
 function render() {
   document.documentElement.lang = uiLanguage === "zh" ? "zh-CN" : "en";

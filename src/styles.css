@@ -27,10 +27,21 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+html {
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  min-height: 100%;
   overflow: hidden;
   color: var(--text);
   background: var(--bg);
@@ -79,10 +90,12 @@ button:disabled {
 }
 
 .app-shell {
+  position: fixed;
+  inset: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 450px;
-  min-height: 100vh;
-  height: 100vh;
+  min-height: 100%;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -1559,6 +1572,7 @@ h2 {
 }
 
 .question-option {
+  position: relative;
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
   align-items: start;
@@ -1587,8 +1601,12 @@ label.question-option {
 
 .question-option input {
   position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   opacity: 0;
-  pointer-events: none;
+  cursor: pointer;
 }
 
 .option-letter {
@@ -2573,11 +2591,13 @@ label.question-option {
 }
 
 @media (max-width: 1180px) {
+  html,
   body {
     overflow: auto;
   }
 
   .app-shell {
+    position: static;
     grid-template-columns: 1fr;
     height: auto;
     min-height: 100vh;
