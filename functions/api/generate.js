@@ -193,6 +193,7 @@ function buildSystemPrompt() {
     "Use the uploaded course materials as source context. If the materials are insufficient, say so in the output instead of inventing details.",
     "For quizzes and mock exams, generate answerable questions with complete conditions and answers or marking guides.",
     "For quizzes and mock exams, always populate each item's answer field. The interface will hide or reveal answers per question.",
+    "For quizzes and mock exams, assign each item a positive integer points value based on its complexity. When settings.assessmentMode is exam, make the item points total 100.",
     "Do not copy uploaded exam questions. You may preserve topic and question type, but change decisive data, scenario, wording, and context.",
     "Use clear paragraph breaks. Put each multi-part question, answer step, proof step, or rubric item on its own line.",
     "Never use external image URLs, placeholder image services, Markdown image links, or links such as via.placeholder.com.",
@@ -374,6 +375,7 @@ function normalizeGeneratedOutput(value, payload) {
       title: String(item?.title || `Item ${index + 1}`),
       body: String(item?.body || ""),
       answer: String(item?.answer || ""),
+      points: Math.max(0, Number(item?.points) || 0),
       meta: Array.isArray(item?.meta) ? item.meta.map(String) : [],
       checks: normalizeChecks(item?.checks)
     })),
@@ -563,10 +565,11 @@ function outputSchema() {
             title: { type: "string" },
             body: { type: "string" },
             answer: { type: "string" },
+            points: { type: "integer", minimum: 1, maximum: 100 },
             meta: { type: "array", items: { type: "string" } },
             checks: { type: "array", items: checkSchema }
           },
-          required: ["title", "body", "answer", "meta", "checks"]
+          required: ["title", "body", "answer", "points", "meta", "checks"]
         }
       },
       safety: {

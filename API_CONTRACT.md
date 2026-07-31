@@ -28,6 +28,7 @@ Example response:
         "title": "Q1",
         "body": "Final student-facing question text.",
         "answer": "Final answer or marking guide.",
+        "points": 20,
         "meta": ["Standard", "Short Answer"],
         "checks": []
       }
@@ -37,3 +38,24 @@ Example response:
 ```
 
 If the backend cannot generate safely or correctly, return a refusal-style `output` object instead of a prompt.
+
+## Exam Grading
+
+`POST /api/grade` receives generated questions, reference answers, per-question maximum points, and student responses. Blank responses are scored as zero without an AI request.
+
+Example response:
+
+```json
+{
+  "results": [
+    {
+      "index": 0,
+      "score": 18,
+      "feedback": "The method is correct; the final arithmetic step needs correction."
+    }
+  ],
+  "summary": "Strong understanding with a minor calculation error."
+}
+```
+
+Each score must remain between zero and the corresponding question's maximum points.

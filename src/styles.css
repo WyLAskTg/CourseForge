@@ -1084,6 +1084,98 @@ h2 {
   background: var(--teal-soft);
 }
 
+.assessment-mode-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.assessment-mode-button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 9px;
+  min-height: 52px;
+  padding: 8px 10px;
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+}
+
+.assessment-mode-button svg {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+}
+
+.assessment-mode-button span,
+.assessment-mode-button strong,
+.assessment-mode-button small {
+  display: block;
+}
+
+.assessment-mode-button strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.assessment-mode-button small {
+  margin-top: 2px;
+  font-size: 11px;
+}
+
+.assessment-mode-button.selected {
+  color: var(--teal-dark);
+  border-color: rgba(15, 118, 110, 0.32);
+  background: white;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+
+.exam-time-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.exam-time-toggle,
+.exam-time-minutes {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.exam-time-toggle input {
+  width: 18px;
+  height: 18px;
+}
+
+.exam-time-toggle span,
+.exam-time-minutes span {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.exam-time-minutes input {
+  width: 78px;
+  height: 36px;
+}
+
+.exam-time-minutes.disabled {
+  opacity: 0.45;
+}
+
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1546,6 +1638,136 @@ h2 {
   grid-template-columns: minmax(0, 1fr) 34px 34px;
   border: 1px solid var(--line);
   background: white;
+}
+
+.question-points {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  color: var(--teal-dark);
+  border-radius: 999px;
+  background: var(--teal-soft);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.exam-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(37, 99, 235, 0.24);
+  border-radius: 8px;
+  background: #f7f9ff;
+}
+
+.exam-toolbar.submitted {
+  border-color: rgba(15, 118, 110, 0.25);
+  background: #f4fbf9;
+}
+
+.exam-toolbar > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.exam-mode-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.exam-mode-label svg {
+  width: 18px;
+  height: 18px;
+}
+
+.exam-timer {
+  font-variant-numeric: tabular-nums;
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
+.exam-total-score {
+  color: var(--teal-dark);
+  font-size: 20px;
+}
+
+.exam-summary,
+.exam-grading-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.exam-grading-error {
+  color: var(--amber);
+}
+
+.exam-response-field {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.exam-response-field > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.exam-response-field textarea {
+  min-height: 92px;
+  max-height: 320px;
+  resize: none;
+  overflow-y: auto;
+}
+
+.exam-response-result,
+.exam-reference-answer {
+  margin-top: 12px;
+  padding: 11px 12px;
+  border-radius: 8px;
+}
+
+.exam-response-result {
+  border: 1px solid var(--line);
+  background: var(--surface-muted);
+}
+
+.exam-reference-answer {
+  color: #1f3b2c;
+  background: #edf8ef;
+}
+
+.exam-response-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.exam-response-heading span {
+  color: var(--teal-dark);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.exam-feedback {
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.unanswered-text {
+  color: var(--muted);
+  font-style: italic;
 }
 
 .history-entry.active {
@@ -2407,8 +2629,22 @@ h2 {
 
 @media (max-width: 620px) {
   .task-grid,
-  .settings-grid {
+  .settings-grid,
+  .assessment-mode-control {
     grid-template-columns: 1fr;
+  }
+
+  .exam-time-setting {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .exam-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .exam-toolbar .primary-action {
+    width: 100%;
   }
 
   .document-row {

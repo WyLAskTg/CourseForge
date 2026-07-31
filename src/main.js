@@ -62,6 +62,9 @@ let activeGenerationId = "";
 let selectedTask = "knowledge";
 let difficulty = "中";
 let questionCount = 5;
+let assessmentMode = "practice";
+let examTimeEnabled = false;
+let examTimeMinutes = 60;
 let audience = state.courses[0]?.audience || "学生";
 let extraRequirement = "";
 let isParsing = false;
@@ -109,6 +112,8 @@ let topToast = null;
 let topToastTimer = null;
 let pendingRelevanceReview = null;
 let relevanceReviewResolver = null;
+let examTimerInterval = null;
+let gradingExamIds = new Set();
 
 render();
 initializeCloudSession();
@@ -236,6 +241,16 @@ function render() {
               </div>
 
               ${usesAssessmentSettings ? `
+                <div class="assessment-mode-control" role="group" aria-label="${t("答题模式", "Question mode")}">
+                  <button class="assessment-mode-button ${assessmentMode === "practice" ? "selected" : ""}" type="button" data-assessment-mode="practice">
+                    ${icon("book-open-check")}
+                    <span><strong>${t("复习模式", "Practice")}</strong><small>${t("可随时查看答案", "Answers available")}</small></span>
+                  </button>
+                  <button class="assessment-mode-button ${assessmentMode === "exam" ? "selected" : ""}" type="button" data-assessment-mode="exam">
+                    ${icon("file-clock")}
+                    <span><strong>${t("考试模式", "Exam")}</strong><small>${t("作答后统一批改", "Submit for grading")}</small></span>
+                  </button>
+                </div>
                 <div class="settings-grid">
                   <label>
                     <span>${t("题量", "Count")}</span>
@@ -250,6 +265,18 @@ function render() {
                     </select>
                   </label>
                 </div>
+                ${assessmentMode === "exam" ? `
+                  <div class="exam-time-setting">
+                    <label class="exam-time-toggle">
+                      <input id="examTimeEnabled" type="checkbox" ${examTimeEnabled ? "checked" : ""} />
+                      <span>${t("限时", "Time limit")}</span>
+                    </label>
+                    <label class="exam-time-minutes ${examTimeEnabled ? "" : "disabled"}">
+                      <input id="examTimeMinutes" type="number" min="1" max="300" value="${examTimeMinutes}" ${examTimeEnabled ? "" : "disabled"} />
+                      <span>${t("分钟", "minutes")}</span>
+                    </label>
+                  </div>
+                ` : ""}
               ` : ""}
 
               <label class="requirement-box">
@@ -373,6 +400,7 @@ function render() {
   attachEvents(activeGeneration);
   window.lucide?.createIcons({ strokeWidth: 2 });
   queueMathTypeset();
+  startExamTimerLoop();
 }
 
 function attachEvents(activeGeneration) {
@@ -443,6 +471,19 @@ function attachEvents(activeGeneration) {
   document.getElementById("questionCount")?.addEventListener("change", (event) => {
     questionCount = clamp(Number(event.target.value), 3, 12);
   });
+  document.querySelectorAll("[data-assessment-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      assessmentMode = button.dataset.assessmentMode === "exam" ? "exam" : "practice";
+      render();
+    });
+  });
+  document.getElementById("examTimeEnabled")?.addEventListener("change", (event) => {
+    examTimeEnabled = event.target.checked;
+    render();
+  });
+  document.getElementById("examTimeMinutes")?.addEventListener("change", (event) => {
+    examTimeMinutes = clamp(Number(event.target.value) || 60, 1, 300);
+  });
   const extraRequirementInput = document.getElementById("extraRequirement");
   autoResizeTextarea(extraRequirementInput);
   extraRequirementInput?.addEventListener("input", (event) => {
@@ -467,6 +508,16 @@ function attachEvents(activeGeneration) {
       }
       renderPreservingOutputScroll();
     });
+  });
+  document.querySelectorAll("[data-exam-response]").forEach((textarea) => {
+    autoResizeTextarea(textarea);
+    textarea.addEventListener("input", () => {
+      updateExamResponse(textarea.dataset.examId, Number(textarea.dataset.itemIndex), textarea.value);
+      autoResizeTextarea(textarea);
+    });
+  });
+  document.querySelector("[data-submit-exam]")?.addEventListener("click", (event) => {
+    submitExam(event.currentTarget.dataset.submitExam);
   });
 
   document.querySelectorAll("[data-course-id]").forEach((button) => {
@@ -1672,7 +1723,7 @@ async function handleGenerate() {
           documents: courseDocuments,
           corpus,
           safety,
-          settings: { difficulty, questionCount, audience, extraRequirement }
+          settings: { difficulty, questionCount, audience, extraRequirement, assessmentMode, examTimeEnabled, examTimeMinutes }
         })
       );
     } catch (error) {
@@ -1688,6 +1739,9 @@ async function handleGenerate() {
     task: selectedTask,
     title: output.title,
     output,
+    exam: selectedTask === "quiz" && assessmentMode === "exam" && isAssessmentTask(output.type)
+      ? createExamSession(output.items, examTimeEnabled ? examTimeMinutes : 0)
+      : null,
     createdAt: new Date().toISOString()
   };
 
@@ -1714,7 +1768,9 @@ function buildGenerationRequest({ task, course, documents, corpus, safety, setti
         ? {
           difficulty: settings.difficulty,
           questionCount: settings.questionCount,
-          includeAnswers: true
+          includeAnswers: true,
+          assessmentMode: settings.assessmentMode,
+          timeLimitMinutes: settings.examTimeEnabled ? settings.examTimeMinutes : 0
         }
         : {})
     },
@@ -1730,12 +1786,13 @@ function buildGenerationRequest({ task, course, documents, corpus, safety, setti
       title: "string",
       type: "knowledge | pitfalls | quiz | mock | refusal",
       checks: [{ label: "string", status: "pass | review | blocked", detail: "string" }],
-      items: [{ title: "string", body: "string", answer: "string optional", meta: ["string"], checks: [] }]
+      items: [{ title: "string", body: "string", answer: "string optional", points: "number", meta: ["string"], checks: [] }]
     },
     generationRules: [
       "Use the uploaded course materials as source context.",
       "Generate final student-facing content only. Do not return prompts, instructions, or hidden reasoning.",
       "For quizzes and mock exams, every question must be answerable from the question conditions and course context.",
+      "For assessment items, assign a positive integer points value reflecting question complexity.",
       "Do not reuse decisive data, cases, wording, or contexts from uploaded exams.",
       "Use clear line breaks for multi-part questions, solutions, and marking guides.",
       "Do not use external image URLs or Markdown image links.",
@@ -1772,6 +1829,159 @@ async function requestAiGeneration(payload) {
   return normalizeAiOutput(data);
 }
 
+function updateExamResponse(generationId, itemIndex, value) {
+  const generation = state.generations.find((item) => item.id === generationId);
+  if (!generation?.exam || generation.exam.submittedAt || !generation.exam.responses[itemIndex]) return;
+  const responses = generation.exam.responses.map((response, index) => (
+    index === itemIndex ? { ...response, text: value } : response
+  ));
+  persist({
+    ...state,
+    generations: state.generations.map((item) => (
+      item.id === generationId ? { ...item, exam: { ...item.exam, responses } } : item
+    ))
+  });
+}
+
+async function submitExam(generationId, { automatic = false } = {}) {
+  if (!generationId || gradingExamIds.has(generationId)) return;
+  let generation = state.generations.find((item) => item.id === generationId);
+  if (!generation?.exam) return;
+
+  const submittedAt = generation.exam.submittedAt || new Date().toISOString();
+  const preparedResponses = generation.exam.responses.map((response) => ({
+    ...response,
+    score: response.text.trim() ? null : 0,
+    feedback: response.text.trim() ? "" : t("未作答，计 0 分。", "No answer; 0 points.")
+  }));
+  persist({
+    ...state,
+    generations: state.generations.map((item) => (
+      item.id === generationId
+        ? {
+          ...item,
+          exam: {
+            ...item.exam,
+            submittedAt,
+            gradingError: "",
+            responses: preparedResponses
+          }
+        }
+        : item
+    ))
+  });
+  gradingExamIds.add(generationId);
+  renderPreservingOutputScroll();
+
+  generation = state.generations.find((item) => item.id === generationId);
+  try {
+    const data = await apiJson("/api/grade", {
+      method: "POST",
+      body: {
+        language: uiLanguage,
+        course: { name: courseName(generation.courseId) },
+        generationTitle: generation.title,
+        items: generation.output.items.map((item, index) => ({
+          index,
+          title: item.title,
+          question: item.body,
+          referenceAnswer: item.answer,
+          maxPoints: generation.exam.responses[index]?.maxPoints || 0,
+          studentAnswer: generation.exam.responses[index]?.text || ""
+        }))
+      }
+    });
+    if (data.configured === false || !Array.isArray(data.results)) {
+      throw new Error(data.error || t("批改服务尚未配置。", "The grading service is not configured."));
+    }
+
+    const resultByIndex = new Map(data.results.map((result) => [Number(result.index), result]));
+    const responses = generation.exam.responses.map((response, index) => {
+      if (!response.text.trim()) return { ...response, score: 0, feedback: t("未作答，计 0 分。", "No answer; 0 points.") };
+      const result = resultByIndex.get(index);
+      const score = clamp(Number(result?.score) || 0, 0, response.maxPoints);
+      return {
+        ...response,
+        score,
+        feedback: String(result?.feedback || "")
+      };
+    });
+    const totalScore = responses.reduce((sum, response) => sum + (Number(response.score) || 0), 0);
+    persist({
+      ...state,
+      generations: state.generations.map((item) => (
+        item.id === generationId
+          ? {
+            ...item,
+            exam: {
+              ...item.exam,
+              submittedAt,
+              totalScore,
+              maxScore: responses.reduce((sum, response) => sum + response.maxPoints, 0),
+              summary: String(data.summary || (automatic ? t("考试已到时并自动提交。", "Time expired and the exam was submitted automatically.") : "")),
+              gradingError: "",
+              responses
+            }
+          }
+          : item
+      ))
+    });
+  } catch (error) {
+    persist({
+      ...state,
+      generations: state.generations.map((item) => (
+        item.id === generationId
+          ? { ...item, exam: { ...item.exam, gradingError: error.message || t("批改失败，请重试。", "Grading failed. Please retry.") } }
+          : item
+      ))
+    });
+  } finally {
+    gradingExamIds.delete(generationId);
+    renderPreservingOutputScroll();
+  }
+}
+
+function startExamTimerLoop() {
+  if (examTimerInterval) {
+    window.clearInterval(examTimerInterval);
+    examTimerInterval = null;
+  }
+  const timedExams = state.generations.filter((generation) => (
+    generation.exam?.mode === "exam"
+    && !generation.exam.submittedAt
+    && generation.exam.timeLimitMinutes > 0
+  ));
+  if (!timedExams.length) return;
+
+  const tick = () => {
+    for (const generation of timedExams) {
+      const remaining = getExamRemainingSeconds(generation.exam);
+      const timer = document.querySelector(`[data-exam-timer="${escapeSelectorValue(generation.id)}"]`);
+      if (timer) timer.textContent = formatExamRemaining(remaining);
+      if (remaining <= 0 && !gradingExamIds.has(generation.id)) {
+        submitExam(generation.id, { automatic: true });
+      }
+    }
+  };
+  tick();
+  examTimerInterval = window.setInterval(tick, 1000);
+}
+
+function getExamRemainingSeconds(exam) {
+  if (!exam?.timeLimitMinutes) return 0;
+  const endTime = new Date(exam.startedAt).getTime() + exam.timeLimitMinutes * 60 * 1000;
+  return Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+}
+
+function formatExamRemaining(totalSeconds) {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return hours > 0
+    ? `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+    : `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
 function normalizeAiOutput(data) {
   const output = data?.output || data;
   if (!output || !Array.isArray(output.items)) {
@@ -1787,6 +1997,7 @@ function normalizeAiOutput(data) {
       title: item.title || `Item ${index + 1}`,
       body: item.body || "",
       answer: item.answer || "",
+      points: Number(item.points || 0),
       meta: Array.isArray(item.meta) ? item.meta : [],
       checks: Array.isArray(item.checks) ? item.checks : []
     }))
@@ -2347,6 +2558,7 @@ function normalizeState(value) {
     task: generation.task || generation.output?.type || "knowledge",
     title: generation.title || "Generated Output",
     output: normalizeGenerationOutput(generation.output),
+    exam: normalizeExamSession(generation.exam),
     createdAt: generation.createdAt || new Date().toISOString()
   }));
 
@@ -2373,11 +2585,73 @@ function normalizeGeneratedItem(item = {}) {
     title: String(item.title || ""),
     body: String(item.body || ""),
     answer: String(item.answer || ""),
+    points: Math.max(0, Number(item.points) || 0),
     meta: Array.isArray(item.meta) ? item.meta : [],
     checks: Array.isArray(item.checks) ? item.checks : [],
     isFavorite: Boolean(item.isFavorite),
     studyStatus: normalizeStudyStatus(item.studyStatus)
   };
+}
+
+function createExamSession(items, timeLimitMinutes = 0) {
+  const points = allocateExamPoints(items);
+  return {
+    mode: "exam",
+    startedAt: new Date().toISOString(),
+    timeLimitMinutes: clamp(Number(timeLimitMinutes) || 0, 0, 300),
+    submittedAt: "",
+    summary: "",
+    totalScore: null,
+    maxScore: points.reduce((sum, value) => sum + value, 0),
+    gradingError: "",
+    responses: points.map((maxPoints) => ({
+      text: "",
+      maxPoints,
+      score: null,
+      feedback: ""
+    }))
+  };
+}
+
+function normalizeExamSession(exam) {
+  if (!exam || exam.mode !== "exam") return null;
+  const responses = Array.isArray(exam.responses)
+    ? exam.responses.map((response) => ({
+      text: String(response?.text || ""),
+      maxPoints: Math.max(0, Number(response?.maxPoints) || 0),
+      score: response?.score === null || response?.score === undefined
+        ? null
+        : Math.max(0, Number(response.score) || 0),
+      feedback: String(response?.feedback || "")
+    }))
+    : [];
+  return {
+    mode: "exam",
+    startedAt: exam.startedAt || new Date().toISOString(),
+    timeLimitMinutes: clamp(Number(exam.timeLimitMinutes) || 0, 0, 300),
+    submittedAt: exam.submittedAt || "",
+    summary: String(exam.summary || ""),
+    totalScore: exam.totalScore === null || exam.totalScore === undefined ? null : Math.max(0, Number(exam.totalScore) || 0),
+    maxScore: Math.max(0, Number(exam.maxScore) || responses.reduce((sum, response) => sum + response.maxPoints, 0)),
+    gradingError: String(exam.gradingError || ""),
+    responses
+  };
+}
+
+function allocateExamPoints(items = []) {
+  if (!items.length) return [];
+  const weights = items.map((item) => Math.max(1, Number(item?.points) || 1));
+  const weightTotal = weights.reduce((sum, value) => sum + value, 0);
+  const raw = weights.map((weight) => (weight / weightTotal) * 100);
+  const points = raw.map((value) => Math.floor(value));
+  let remaining = 100 - points.reduce((sum, value) => sum + value, 0);
+  const order = raw
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction);
+  for (let index = 0; index < remaining; index += 1) {
+    points[order[index % order.length].index] += 1;
+  }
+  return points;
 }
 
 function normalizeStudyCollection(collection = {}, fallbackCourseId = "") {
@@ -2930,8 +3204,10 @@ function documentRow(document) {
 
 function generatedOutput(generation) {
   const output = generation.output;
+  const exam = generation.exam;
   return `
     <div class="generated-stack">
+      ${exam?.mode === "exam" ? examToolbar(generation) : ""}
       <div class="result-list">
         ${output.items.map((item, index) => resultItem(generation, output, item, index)).join("")}
       </div>
@@ -2944,8 +3220,11 @@ function resultItem(generation, output, item, index) {
   const answerKey = getAnswerKey(generation.id, index);
   const questionKey = getQuestionKey(generation.id, index);
   const hasAnswer = Boolean(normalizedItem.answer);
-  const answerVisible = hasAnswer && visibleAnswerKeys.has(answerKey);
-  const canTrackItem = output.type !== "refusal";
+  const exam = generation.exam?.mode === "exam" ? generation.exam : null;
+  const examResponse = exam?.responses?.[index] || null;
+  const examSubmitted = Boolean(exam?.submittedAt);
+  const answerVisible = !exam && hasAnswer && visibleAnswerKeys.has(answerKey);
+  const canTrackItem = output.type !== "refusal" && (!exam || examSubmitted);
   const showStudyTools = canTrackItem && isAssessmentTask(output.type);
   const courseStudyCollections = getCourseStudyCollections(generation.courseId);
 
@@ -2953,8 +3232,10 @@ function resultItem(generation, output, item, index) {
     <article class="result-item ${output.type === "refusal" ? "blocked" : ""} ${questionKey === activeQuestionKey ? "focused" : ""}" data-scroll-target="question:${escapeAttr(questionKey)}">
       <div class="result-title">
         <strong>${escapeHtml(displayBilingual(normalizedItem.title))}</strong>
+        ${examResponse ? `<span class="question-points">${examResponse.maxPoints} ${t("分", "pts")}</span>` : ""}
       </div>
       <div class="rich-text result-body">${renderRichText(normalizedItem.body)}</div>
+      ${examResponse ? examResponseMarkup(generation, examResponse, index) : ""}
       ${canTrackItem ? `
         <div class="result-tools">
           <button class="bookmark-toggle ${normalizedItem.isFavorite ? "active" : ""}" type="button" data-toggle-favorite="1" data-generation-id="${escapeAttr(generation.id)}" data-item-index="${index}">
@@ -2973,14 +3254,67 @@ function resultItem(generation, output, item, index) {
           ${showStudyTools && courseStudyCollections.length ? renderStudyCollectionSelect(courseStudyCollections, generation.id, index) : ""}
         </div>
       ` : ""}
-      ${hasAnswer ? `
+      ${!exam && hasAnswer ? `
         <label class="answer-toggle">
           <input type="checkbox" data-answer-toggle="${escapeAttr(answerKey)}" ${answerVisible ? "checked" : ""} />
           <span>${t("显示答案", "Show answer")}</span>
         </label>
       ` : ""}
       ${answerVisible ? `<div class="answer-box rich-text">${renderRichText(normalizedItem.answer)}</div>` : ""}
+      ${examSubmitted && hasAnswer ? `
+        <div class="exam-reference-answer">
+          <strong>${t("参考答案", "Reference answer")}</strong>
+          <div class="rich-text">${renderRichText(normalizedItem.answer)}</div>
+        </div>
+      ` : ""}
     </article>
+  `;
+}
+
+function examToolbar(generation) {
+  const exam = generation.exam;
+  const submitted = Boolean(exam.submittedAt);
+  const grading = gradingExamIds.has(generation.id);
+  const scoreReady = exam.totalScore !== null;
+  return `
+    <section class="exam-toolbar ${submitted ? "submitted" : ""}">
+      <div>
+        <span class="exam-mode-label">${icon(submitted ? "badge-check" : "file-clock")}${submitted ? t("已提交", "Submitted") : t("考试模式", "Exam mode")}</span>
+        ${!submitted && exam.timeLimitMinutes > 0 ? `<strong class="exam-timer" data-exam-timer="${escapeAttr(generation.id)}">${formatExamRemaining(getExamRemainingSeconds(exam))}</strong>` : ""}
+        ${submitted && scoreReady ? `<strong class="exam-total-score">${exam.totalScore} / ${exam.maxScore}</strong>` : ""}
+      </div>
+      ${!submitted || grading || exam.gradingError ? `
+        <button class="primary-action" type="button" data-submit-exam="${escapeAttr(generation.id)}" ${grading ? "disabled" : ""}>
+          ${icon(grading ? "loader-2" : "send", grading ? "spin" : "")}
+          <span>${grading ? t("批改中", "Grading") : (submitted ? t("重新批改", "Retry grading") : t("提交试卷", "Submit exam"))}</span>
+        </button>
+      ` : ""}
+      ${exam.gradingError ? `<p class="exam-grading-error">${escapeHtml(exam.gradingError)}</p>` : ""}
+      ${submitted && exam.summary ? `<p class="exam-summary">${escapeHtml(exam.summary)}</p>` : ""}
+    </section>
+  `;
+}
+
+function examResponseMarkup(generation, response, index) {
+  const submitted = Boolean(generation.exam?.submittedAt);
+  if (!submitted) {
+    return `
+      <label class="exam-response-field">
+        <span>${t("你的答案", "Your answer")}</span>
+        <textarea data-exam-response="1" data-exam-id="${escapeAttr(generation.id)}" data-item-index="${index}" placeholder="${t("在此作答", "Enter your answer")}">${escapeHtml(response.text)}</textarea>
+      </label>
+    `;
+  }
+
+  return `
+    <div class="exam-response-result">
+      <div class="exam-response-heading">
+        <strong>${t("你的答案", "Your answer")}</strong>
+        <span>${response.score ?? 0} / ${response.maxPoints} ${t("分", "pts")}</span>
+      </div>
+      <div class="rich-text">${response.text.trim() ? renderRichText(response.text) : `<p class="unanswered-text">${t("未作答", "No answer")}</p>`}</div>
+      ${response.feedback ? `<p class="exam-feedback">${escapeHtml(response.feedback)}</p>` : ""}
+    </div>
   `;
 }
 

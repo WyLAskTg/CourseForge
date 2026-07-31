@@ -47,6 +47,7 @@ const schemaStatements = [
     task TEXT,
     title TEXT,
     output_json TEXT NOT NULL,
+    exam_json TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
@@ -86,7 +87,8 @@ const schemaMigrations = [
   "ALTER TABLE feedback_threads ADD COLUMN owner_token_hash TEXT",
   "ALTER TABLE feedback_threads ADD COLUMN author_label TEXT",
   "ALTER TABLE feedback_threads ADD COLUMN is_anonymous INTEGER NOT NULL DEFAULT 1",
-  "ALTER TABLE feedback_replies ADD COLUMN is_developer INTEGER NOT NULL DEFAULT 0"
+  "ALTER TABLE feedback_replies ADD COLUMN is_developer INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE generations ADD COLUMN exam_json TEXT"
 ];
 
 export function json(data, init = {}) {
@@ -255,6 +257,7 @@ export async function readUserState(db, userId) {
       task: row.task,
       title: row.title,
       output: parseJson(row.output_json, {}),
+      exam: parseJson(row.exam_json, null),
       createdAt: row.created_at
     }))
   };
@@ -339,13 +342,14 @@ export async function replaceUserState(db, userId, state) {
 
   for (const generation of generations) {
     statements.push(db.prepare(
-      `INSERT INTO generations (id, user_id, course_id, task, title, output_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO generations (id, user_id, course_id, task, title, output_json, exam_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          course_id = excluded.course_id,
          task = excluded.task,
          title = excluded.title,
          output_json = excluded.output_json,
+         exam_json = excluded.exam_json,
          updated_at = excluded.updated_at`
     ).bind(
       String(generation.id || newId("generation")),
@@ -354,6 +358,7 @@ export async function replaceUserState(db, userId, state) {
       String(generation.task || ""),
       String(generation.title || generation.output?.title || "Generated output"),
       JSON.stringify(generation.output || {}),
+      JSON.stringify(generation.exam || null),
       String(generation.createdAt || now),
       now
     ));
