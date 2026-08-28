@@ -58,8 +58,8 @@ export async function onRequest(context) {
         results,
         summary: deterministicResults.length
           ? (payload.language === "en"
-            ? "All answered questions matched their reference answers."
-            : "所有已作答题目均与参考答案一致。")
+            ? "All answered objective questions were graded using fixed scoring rules."
+            : "所有已作答客观题均已按固定规则判分。")
           : (payload.language === "en"
             ? "No questions were answered."
             : "本次提交没有已作答题目。")
@@ -209,6 +209,10 @@ function normalizePayload(payload = {}) {
         title: String(item?.title || "").slice(0, 300),
         question: String(item?.question || "").slice(0, 12000),
         referenceAnswer: String(item?.referenceAnswer || "").slice(0, 12000),
+        choiceType: ["single", "multiple"].includes(item?.choiceType) ? item.choiceType : "none",
+        options: Array.isArray(item?.options)
+          ? item.options.map((option) => String(option || "").slice(0, 2000)).filter(Boolean).slice(0, 8)
+          : [],
         maxPoints: Math.max(0, Math.min(100, Number(item?.maxPoints) || 0)),
         studentAnswer: String(item?.studentAnswer || "").slice(0, 12000)
       }))
@@ -270,6 +274,25 @@ function deterministicGrade(item, language) {
   const exactMatch = studentAnswer && studentAnswer === referenceAnswer;
   const studentChoices = extractChoiceLetters(item.studentAnswer);
   const referenceChoices = extractChoiceLetters(item.referenceAnswer);
+  const hasChoiceData = item.options.length >= 2 && referenceChoices.length;
+
+  if (hasChoiceData && item.choiceType === "multiple") {
+    return gradeMultipleChoice(item, studentChoices, referenceChoices, language);
+  }
+
+  if (hasChoiceData && item.choiceType === "single" && studentChoices.length) {
+    const correct = studentChoices.length === 1
+      && referenceChoices.length === 1
+      && studentChoices[0] === referenceChoices[0];
+    return {
+      index: item.index,
+      score: correct ? item.maxPoints : 0,
+      feedback: correct
+        ? (language === "en" ? "Correct; full credit awarded." : "选择正确，获得满分。")
+        : (language === "en" ? "Incorrect choice; 0 points." : "选择错误，本题计 0 分。")
+    };
+  }
+
   const choiceMatch = hasMultipleChoiceOptions(item.question)
     && studentChoices.length
     && referenceChoices.length
@@ -283,6 +306,39 @@ function deterministicGrade(item, language) {
       ? "Correct; the answer matches the reference answer."
       : "回答正确，与参考答案一致。"
   };
+}
+
+function gradeMultipleChoice(item, studentChoices, referenceChoices, language) {
+  const correctChoices = new Set(referenceChoices);
+  const hasWrongChoice = studentChoices.some((choice) => !correctChoices.has(choice));
+  if (hasWrongChoice) {
+    return {
+      index: item.index,
+      score: 0,
+      feedback: language === "en"
+        ? "The response includes an incorrect option; 0 points under the multiple-choice scoring rule."
+        : "答案包含错误选项，按多选题规则计 0 分。"
+    };
+  }
+
+  const selectedCorrectCount = studentChoices.filter((choice) => correctChoices.has(choice)).length;
+  const score = roundScore(item.maxPoints * selectedCorrectCount / correctChoices.size);
+  const fullCredit = selectedCorrectCount === correctChoices.size;
+  return {
+    index: item.index,
+    score,
+    feedback: fullCredit
+      ? (language === "en"
+        ? "All correct options were selected; full credit awarded."
+        : "所有正确选项均已选中，获得满分。")
+      : (language === "en"
+        ? `${selectedCorrectCount} of ${correctChoices.size} correct options were selected with no incorrect choices; proportional credit awarded.`
+        : `未错选，选中了 ${selectedCorrectCount}/${correctChoices.size} 个正确选项，按比例得分。`)
+  };
+}
+
+function roundScore(value) {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 }
 
 function normalizeAnswerText(value) {

@@ -158,7 +158,6 @@ function render() {
   const questionReferences = collectQuestionReferences(courseGenerations);
   const courseStudyCollections = getCourseStudyCollections(activeCourse?.id);
   const favoriteCollections = courseStudyCollections.filter((collection) => collection.type === "favorite");
-  const wrongCollections = courseStudyCollections.filter((collection) => collection.type === "wrong");
   const activeStudyCollection = courseStudyCollections.find((collection) => collection.id === activeStudyCollectionId) || null;
   const activeStudyCollectionRefs = activeStudyCollection ? resolveStudyCollectionItems(activeStudyCollection, questionReferences) : [];
   const searchResults = buildWorkspaceSearchResults(searchQuery, courseDocuments, courseGenerations);
@@ -191,13 +190,6 @@ function render() {
                 ${icon("log-in")}<span>${t("登录", "Log in")}</span>
               </button>
             `}
-            <label class="language-control">
-              <span class="language-symbol" aria-hidden="true">文A</span>
-              <select id="languageSelect" aria-label="${t("界面语言", "Interface language")}">
-                ${option("zh", uiLanguage, "中文")}
-                ${option("en", uiLanguage, "English")}
-              </select>
-            </label>
             ${blockedBadge(safety)}
           </div>
         </header>
@@ -360,34 +352,6 @@ function render() {
               : ""}
           </div>
           ${activeStudyCollection?.type === "favorite" ? `
-            <div class="study-collection-detail">
-              <div class="study-section-head">
-                <strong>${escapeHtml(activeStudyCollection.name)}</strong>
-                <button class="spotlight-link" type="button" data-close-study-collection="1">${t("收起", "Collapse")}</button>
-              </div>
-              <div class="study-link-list">
-                ${activeStudyCollectionRefs.length
-                  ? activeStudyCollectionRefs.map(renderStudyLinkItem).join("")
-                  : `<p class="feedback-inline-status">${escapeHtml(t("这个集合里还没有题目。", "This collection has no questions yet."))}</p>`}
-              </div>
-            </div>
-          ` : ""}
-        </section>
-        <section class="study-board">
-          <div class="memory-section-head">
-            <div>
-              <h3>${t("错题集", "Wrong Questions")}</h3>
-            </div>
-            <button class="create-course-button study-create-button" type="button" data-create-study-collection="wrong">
-              ${icon("plus")}<span>${t("新建", "New")}</span>
-            </button>
-          </div>
-          <div class="study-collection-list">
-            ${wrongCollections.length
-              ? wrongCollections.map((collection) => renderStudyCollectionItem(collection, questionReferences, activeStudyCollectionId)).join("")
-              : ""}
-          </div>
-          ${activeStudyCollection?.type === "wrong" ? `
             <div class="study-collection-detail">
               <div class="study-section-head">
                 <strong>${escapeHtml(activeStudyCollection.name)}</strong>
@@ -1206,7 +1170,7 @@ function handleCreateStudyCollection(event) {
   const name = input.value.trim();
   if (!name) {
     input.classList.add("needs-value");
-    input.placeholder = collectionType === "favorite" ? t("请输入收藏夹名称", "Enter a folder name") : t("请输入错题集名称", "Enter a wrong-question set name");
+    input.placeholder = t("请输入收藏夹名称", "Enter a folder name");
     input.focus();
     return;
   }
@@ -1262,7 +1226,7 @@ function addQuestionToStudyCollection(collectionId, generationId, itemIndex) {
       return normalizeGeneratedItem({
         ...normalizedQuestion,
         isFavorite: collection.type === "favorite" ? true : normalizedQuestion.isFavorite,
-        studyStatus: collection.type === "wrong" && !normalizedQuestion.studyStatus ? "review" : normalizedQuestion.studyStatus
+        studyStatus: normalizedQuestion.studyStatus
       });
     });
     return { ...item, output: { ...item.output, items: nextItems } };
@@ -1929,6 +1893,8 @@ async function submitExam(generationId, { automatic = false } = {}) {
           title: item.title,
           question: formatQuestionForGrading(item),
           referenceAnswer: item.answer,
+          choiceType: item.choiceType,
+          options: item.options,
           maxPoints: generation.exam.responses[index]?.maxPoints || 0,
           studentAnswer: generation.exam.responses[index]?.text || ""
         }))
@@ -2732,7 +2698,7 @@ function normalizeStudyCollectionRef(ref = {}) {
 }
 
 function normalizeStudyCollectionType(value) {
-  return ["favorite", "wrong"].includes(value) ? value : "";
+  return value === "favorite" ? value : "";
 }
 
 function normalizeStudyStatus(value) {
@@ -2824,14 +2790,13 @@ function studyCollectionDialog() {
   const collectionType = normalizeStudyCollectionType(studyCollectionDialogType);
   if (!collectionType) return "";
 
-  const isFavorite = collectionType === "favorite";
   return `
     <div class="modal-backdrop" id="studyCollectionDialogBackdrop" role="presentation">
       <section class="modal-card course-dialog" role="dialog" aria-modal="true" aria-labelledby="studyCollectionDialogTitle">
         <div class="modal-heading">
           <div>
-            <p class="eyebrow">${isFavorite ? t("新收藏夹", "New folder") : t("新错题集", "New wrong-question set")}</p>
-            <h2 id="studyCollectionDialogTitle">${isFavorite ? t("创建收藏夹", "Create Folder") : t("创建错题集", "Create Set")}</h2>
+            <p class="eyebrow">${t("新收藏夹", "New folder")}</p>
+            <h2 id="studyCollectionDialogTitle">${t("创建收藏夹", "Create Folder")}</h2>
           </div>
           <button class="icon-button quiet" id="closeStudyCollectionDialogBtn" type="button" aria-label="${t("关闭", "Close")}">
             ${icon("x")}
@@ -2839,8 +2804,8 @@ function studyCollectionDialog() {
         </div>
         <form class="modal-form" id="studyCollectionDialogForm">
           <label>
-            <span>${isFavorite ? t("收藏夹名称", "Folder name") : t("错题集名称", "Set name")}</span>
-            <input id="studyCollectionDialogName" autocomplete="off" autofocus placeholder="${isFavorite ? t("例如 期中复习", "Example: Midterm review") : t("例如 导数易错题", "Example: Derivatives review")}" />
+            <span>${t("收藏夹名称", "Folder name")}</span>
+            <input id="studyCollectionDialogName" autocomplete="off" autofocus placeholder="${t("例如 期中复习", "Example: Midterm review")}" />
           </label>
           <div class="modal-actions">
             <button class="secondary-action" id="cancelStudyCollectionDialogBtn" type="button">${t("取消", "Cancel")}</button>
@@ -2939,10 +2904,9 @@ function settingsDialog() {
   const documents = [...state.documents].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   const generations = [...state.generations].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   const favorites = state.studyCollections.filter((collection) => collection.type === "favorite");
-  const wrongSets = state.studyCollections.filter((collection) => collection.type === "wrong");
   const tabs = [
     { id: "account", label: t("账号与数据", "Account & Data"), iconName: "database" },
-    { id: "collections", label: t("收藏夹与错题集", "Collections"), iconName: "star" },
+    { id: "collections", label: t("收藏夹", "Favorites"), iconName: "star" },
     { id: "feedback", label: t("意见反馈", "Feedback"), iconName: "messages-square" },
   ];
   const activeTab = tabs.some((tab) => tab.id === settingsTab) ? settingsTab : "account";
@@ -2969,7 +2933,7 @@ function settingsDialog() {
           </nav>
           <div class="settings-content">
             ${activeTab === "collections"
-              ? settingsCollectionsSection(favorites, wrongSets, allQuestionReferences)
+              ? settingsCollectionsSection(favorites, allQuestionReferences)
               : activeTab === "feedback"
                 ? settingsFeedbackSection()
                 : settingsAccountDataSection(documents, generations)}
@@ -2986,6 +2950,18 @@ function settingsAccountDataSection(documents, generations) {
       <h3>${t("账号与数据", "Account & Data")}</h3>
     </div>
     <div class="settings-content-grid settings-account-grid">
+      <section class="settings-admin-card">
+        <div class="settings-card-head">
+          <h3>${t("界面语言", "Interface Language")}</h3>
+        </div>
+        <label class="language-control">
+          <span class="language-symbol" aria-hidden="true">文A</span>
+          <select id="languageSelect" aria-label="${t("界面语言", "Interface language")}">
+            ${option("zh", uiLanguage, "中文")}
+            ${option("en", uiLanguage, "English")}
+          </select>
+        </label>
+      </section>
       <section class="settings-admin-card settings-account-card">
         <div class="settings-card-head">
           <h3>${t("账号信息", "Account")}</h3>
@@ -3015,10 +2991,10 @@ function settingsAccountDataSection(documents, generations) {
   `;
 }
 
-function settingsCollectionsSection(favorites, wrongSets, allQuestionReferences) {
+function settingsCollectionsSection(favorites, allQuestionReferences) {
   return `
     <div class="settings-section-heading">
-      <h3>${t("收藏夹与错题集", "Collections")}</h3>
+      <h3>${t("收藏夹", "Favorites")}</h3>
     </div>
     <div class="settings-content-grid">
       <section class="settings-admin-card">
@@ -3028,15 +3004,6 @@ function settingsCollectionsSection(favorites, wrongSets, allQuestionReferences)
         </div>
         <div class="settings-summary-list">
           ${favorites.length ? favorites.map((collection) => settingsCollectionRow(collection, allQuestionReferences)).join("") : settingsEmptyLine(t("还没有收藏夹", "No favorite folders yet"))}
-        </div>
-      </section>
-      <section class="settings-admin-card">
-        <div class="settings-card-head">
-          <h3>${t("错题集", "Wrong Question Sets")}</h3>
-          <span>${escapeHtml(t(`${wrongSets.length} 个`, `${wrongSets.length} set(s)`))}</span>
-        </div>
-        <div class="settings-summary-list">
-          ${wrongSets.length ? wrongSets.map((collection) => settingsCollectionRow(collection, allQuestionReferences)).join("") : settingsEmptyLine(t("还没有错题集", "No wrong-question sets yet"))}
         </div>
       </section>
     </div>
@@ -3336,7 +3303,7 @@ function examToolbar(generation) {
   return `
     <section class="exam-toolbar ${submitted ? "submitted" : ""}">
       <div>
-        <span class="exam-mode-label">${icon(submitted ? "badge-check" : "file-clock")}${submitted ? t("已提交", "Submitted") : t("考试模式", "Exam mode")}</span>
+        <span class="exam-mode-label">${submitted ? t("得分", "Score") : `${icon("file-clock")}${t("考试模式", "Exam mode")}`}</span>
         ${!submitted && exam.timeLimitMinutes > 0 ? `<strong class="exam-timer" data-exam-timer="${escapeAttr(generation.id)}">${formatExamRemaining(getExamRemainingSeconds(exam))}</strong>` : ""}
         ${submitted && scoreReady ? `<strong class="exam-total-score">${exam.totalScore} / ${exam.maxScore}</strong>` : ""}
       </div>
@@ -3742,15 +3709,11 @@ function renderStudyCollectionItem(collection, questionReferences, activeId) {
 
 function renderStudyCollectionSelect(collections, generationId, itemIndex) {
   const favoriteCollections = collections.filter((collection) => collection.type === "favorite");
-  const wrongCollections = collections.filter((collection) => collection.type === "wrong");
   return `
     <select class="collection-select" data-add-study-collection="1" data-generation-id="${escapeAttr(generationId)}" data-item-index="${itemIndex}" aria-label="${t("加入集合", "Add to collection")}">
       <option value="">${t("加入集合", "Add to")}</option>
       ${favoriteCollections.length ? `<optgroup label="${escapeAttr(t("收藏夹", "Favorites"))}">
         ${favoriteCollections.map((collection) => `<option value="${escapeAttr(collection.id)}">${escapeHtml(collection.name)}</option>`).join("")}
-      </optgroup>` : ""}
-      ${wrongCollections.length ? `<optgroup label="${escapeAttr(t("错题集", "Wrong questions"))}">
-        ${wrongCollections.map((collection) => `<option value="${escapeAttr(collection.id)}">${escapeHtml(collection.name)}</option>`).join("")}
       </optgroup>` : ""}
     </select>
   `;
