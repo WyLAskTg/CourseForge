@@ -124,16 +124,6 @@ button:disabled {
   gap: 12px;
 }
 
-.brand-mark {
-  display: grid;
-  place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 8px;
-  color: white;
-  background: var(--teal);
-}
-
 .brand strong,
 .brand span,
 .course-item strong,

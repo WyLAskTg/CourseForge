@@ -178,7 +178,6 @@ function render() {
       <main class="workspace">
         <header class="topbar">
           <div class="brand topbar-brand">
-            <div class="brand-mark">${icon("brain")}</div>
             <div>
               <strong>CourseForge</strong>
               ${bi("课程综合复习平台", "Course Review Platform")}
@@ -4719,9 +4718,9 @@ function queueMathTypeset() {
 
 function loadUiLanguage() {
   try {
-    return localStorage.getItem(UI_LANGUAGE_KEY) === "en" ? "en" : "zh";
+    return localStorage.getItem(UI_LANGUAGE_KEY) === "zh" ? "zh" : "en";
   } catch {
-    return "zh";
+    return "en";
   }
 }
 
