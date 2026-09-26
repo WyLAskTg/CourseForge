@@ -179,8 +179,8 @@ function render() {
         <header class="topbar">
           <div class="brand topbar-brand">
             <div>
-              <strong>CourseForge</strong>
-              ${bi("课程综合复习平台", "Course Review Platform")}
+              <strong>UPrep</strong>
+              ${bi("通过课程资料高效备考", "turn course materials into exam prep")}
             </div>
           </div>
           <div class="header-actions">
