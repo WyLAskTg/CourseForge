@@ -142,7 +142,7 @@ function render() {
   const outputScrollState = captureOutputScrollState();
   const shouldRestoreOutputScroll = !pendingScrollTarget;
   document.documentElement.lang = uiLanguage === "zh" ? "zh-CN" : "en";
-  document.title = t("CourseForge | 课程复习助手", "CourseForge | Course Review Assistant");
+  document.title = "UPrep";
 
   const activeCourse = getActiveCourse();
   const courseDocuments = getCourseDocuments();
@@ -180,7 +180,7 @@ function render() {
           <div class="brand topbar-brand">
             <div>
               <strong>UPrep</strong>
-              ${bi("通过课程资料高效备考", "turn course materials into exam prep")}
+              ${bi("通过课程资料高效备考", "Turn course materials into exam prep")}
             </div>
           </div>
           <div class="header-actions">
